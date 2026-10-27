@@ -3,6 +3,7 @@ extends SceneTree
 ##   headless:  godot --headless --path . -s res://tests/progress_test.gd
 ##   + images:  godot --path . -s res://tests/progress_test.gd -- <out_dir>
 
+const TestVault = preload("res://tests/test_vault.gd")
 var fails: int = 0
 var out: String = ""
 var app: Control
@@ -91,6 +92,7 @@ func _init() -> void:
 	DisplayServer.window_set_size(Vector2i(1280, 860))
 	ProgressStore.file_override = TEST_FILE
 	ProgressStore.reset()
+	TestVault.open("progress")   # never touch the user's vault
 
 	check(ProgressStore.passes(2, 3) and not ProgressStore.passes(1, 3) and ProgressStore.pass_mark(7) == 5, "pass mark is two thirds (2/3, 5/7)")
 	await frames(3)

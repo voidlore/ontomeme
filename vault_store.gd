@@ -30,7 +30,10 @@ const ASSET_DIRS: Array[String] = ["models"]
 
 
 func _ready() -> void:
-	open_vault(VaultRegistry.startup_vault(), not _cmdline_vault())
+	# A vault opened before the autoload is ready (a test's throwaway vault)
+	# wins; otherwise the startup vault would silently replace it.
+	if vault_path == "":
+		open_vault(VaultRegistry.startup_vault(), not _cmdline_vault())
 
 
 static func _cmdline_vault() -> bool:

@@ -242,6 +242,12 @@ learn: Architecture
 
 func _init() -> void:
 	await process_frame
+	seed_vault()
+	quit()
+
+
+## Write the course and quiz notes into the open vault. Tests call this directly.
+static func seed_vault() -> void:
 	VaultStore.refresh_note_list()
 	for title in NOTES:
 		var idx: int = VaultStore.get_note_index(title)
@@ -253,4 +259,3 @@ func _init() -> void:
 			note.tags.assign(["godot", "course"])
 		VaultStore.save_note(note)
 		print("seeded: ", title, " -> ", note.resource_path)
-	quit()

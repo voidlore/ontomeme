@@ -3,6 +3,7 @@ extends SceneTree
 ##   headless:  godot --headless --path . -s res://tests/tutorial_test.gd -- [fox.glb]
 ##   + images:  godot --path . -s res://tests/tutorial_test.gd -- [fox.glb] <out_dir>
 
+const TestVault = preload("res://tests/test_vault.gd")
 var fails: int = 0
 var out: String = ""
 var app: Control
@@ -75,6 +76,7 @@ func _init() -> void:
 			out = a
 	ProgressStore.file_override = "user://test_progress_tutorial.json"   # never touch real progress
 	ProgressStore.reset()
+	TestVault.open("tutorial")   # never touch the user's vault
 	DisplayServer.window_set_size(Vector2i(1280, 860))
 
 	# ── Parsers ──

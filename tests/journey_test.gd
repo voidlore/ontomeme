@@ -4,6 +4,7 @@ extends SceneTree
 ##   headless:  godot --headless --path . -s res://tests/journey_test.gd
 ##   + images:  godot --path . -s res://tests/journey_test.gd -- <out_dir>
 
+const TestVault = preload("res://tests/test_vault.gd")
 var fails: int = 0
 var out: String = ""
 var app: Control
@@ -83,6 +84,7 @@ func _init() -> void:
 	JourneyStore.reset()
 	ProgressStore.file_override = "user://test_progress_journey.json"
 	ProgressStore.reset()
+	TestVault.open("journey")   # never touch the user's vault
 
 	# ── Store ──
 	check(JourneyStore.parse_key("Tutorial 5: Making a Quiz#quiz2") == {"note": "Tutorial 5: Making a Quiz", "kind": "quiz", "index": 2}, "activity keys round-trip")

@@ -693,7 +693,7 @@ You can write notes, link them, build 3D scenes, make quizzes and flashcards, im
 
 ## A small rocket, built from primitives and exported with Godot's glTF
 ## exporter, so the import tutorial has a real .glb to show.
-func _build_rocket() -> Node3D:
+static func _build_rocket() -> Node3D:
 	var root := Node3D.new()
 	root.name = "Rocket"
 	var white := StandardMaterial3D.new()
@@ -736,7 +736,7 @@ func _build_rocket() -> Node3D:
 	return root
 
 
-func _cyl(top: float, bottom: float, h: float, seg: int) -> Mesh:
+static func _cyl(top: float, bottom: float, h: float, seg: int) -> Mesh:
 	var m := CylinderMesh.new()
 	m.top_radius = top
 	m.bottom_radius = bottom
@@ -745,28 +745,28 @@ func _cyl(top: float, bottom: float, h: float, seg: int) -> Mesh:
 	return _bake(m)
 
 
-func _ring(inner: float, outer: float) -> Mesh:
+static func _ring(inner: float, outer: float) -> Mesh:
 	var m := TorusMesh.new()
 	m.inner_radius = inner
 	m.outer_radius = outer
 	return _bake(m)
 
 
-func _sphere(r: float) -> Mesh:
+static func _sphere(r: float) -> Mesh:
 	var m := SphereMesh.new()
 	m.radius = r
 	m.height = r * 2.0
 	return _bake(m)
 
 
-func _box(size: Vector3) -> Mesh:
+static func _box(size: Vector3) -> Mesh:
 	var m := BoxMesh.new()
 	m.size = size
 	return _bake(m)
 
 
 ## PrimitiveMesh -> ArrayMesh, so surface materials export with the mesh.
-func _bake(p: PrimitiveMesh) -> ArrayMesh:
+static func _bake(p: PrimitiveMesh) -> ArrayMesh:
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, p.get_mesh_arrays())
 	return am
@@ -774,6 +774,13 @@ func _bake(p: PrimitiveMesh) -> ArrayMesh:
 
 func _init() -> void:
 	await process_frame
+	seed_vault()
+	quit()
+
+
+## Write the tutorials, the sample model and (if `journey` and it is empty) the
+## starter Learning Journey into the open vault. Tests call this directly.
+static func seed_vault(journey: bool = true) -> void:
 	# Sample model
 	var models_dir: String = VaultStore.vault_path.path_join("models")
 	DirAccess.make_dir_recursive_absolute(models_dir)
@@ -809,7 +816,8 @@ func _init() -> void:
 		var ti: int = VaultStore.get_note_index(row[0])
 		if ti >= 0:
 			VaultStore.move_note(VaultStore.note_list[ti], FOLDER)
-	_seed_journey()
+	if journey:
+		_seed_journey()
 
 	# Point the welcome note at the tutorials
 	var intro_i: int = VaultStore.get_note_index("Introduction")
@@ -818,11 +826,10 @@ func _init() -> void:
 		if not intro.raw_text.contains("[[Start Here: Tutorials]]"):
 			intro.raw_text = "New here? Start with [[Start Here: Tutorials]].\n\n" + intro.raw_text
 			VaultStore.save_note(intro)
-	quit()
 
 
 ## A starter Learning Journey built from the tutorials (only if empty).
-func _seed_journey() -> void:
+static func _seed_journey() -> void:
 	if not JourneyStore.topics().is_empty():
 		print("journey: already has topics, left alone")
 		return

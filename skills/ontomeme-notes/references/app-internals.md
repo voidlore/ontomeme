@@ -17,8 +17,12 @@
 
 ## Running
 
-- All tests: `$GODOT --headless --path . -s res://tests/<name>_test.gd`, one at
-  a time. Each prints `RESULT: ALL PASS (0 failures)` and exits non-zero on failure.
+- All tests: `GODOT=$GODOT tests/run_all.sh` (what CI runs). One test:
+  `$GODOT --headless --path . -s res://tests/<name>_test.gd`. Each prints
+  `RESULT: ALL PASS (0 failures)` and exits non-zero on failure; the runner
+  also fails on any `SCRIPT ERROR` line or a hang.
+- `tests/boot_test.gd` is the "app starts" gate: every script compiles and the
+  window builds on an empty and a seeded vault. Run it before every commit.
 - A test or script that takes args: `… -s res://x.gd -- arg1 --flag`. Read them
   with `OS.get_cmdline_user_args()`.
 - The same tests with a display (drop `--headless`, pass an out dir) also save
@@ -44,6 +48,14 @@
 - **Fences:** a fence closes only on a line with at least as many backticks.
   The renderer, lint and `JourneyStore.scene_blocks` must all agree, or
   activity indices drift.
+- **Tests open a throwaway vault:** `TestVault.open("<name>")`
+  (`tests/test_vault.gd`) after setting the store `file_override`s. It wipes
+  `user://test-vault-<name>/` and seeds the tutorials and Godot course. A test
+  that relies on notes already in the user's vault passes on your machine and
+  fails in CI.
+- **The VaultStore autoload opens the startup vault only if none is open.**
+  Before that guard existed, its `_ready()` silently replaced a vault a test had
+  opened in `_init`, so UI tests ran against the user's real vault.
 - **Tests must never touch the user's data:** set
   `ProgressStore.file_override` / `JourneyStore.file_override` to `user://test_*.json`,
   and `VaultStore.open_vault(tmp_dir, false)` (`false` = don't remember it in
