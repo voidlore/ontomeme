@@ -1,0 +1,29 @@
+[gd_resource type="Theme" load_steps=6 format=3]
+
+[ext_resource type="FontFile" path="res://fonts/AdwaitaSans-Regular.ttf" id="1_sans_regular"]
+[ext_resource type="FontFile" path="res://fonts/AdwaitaMono-Regular.ttf" id="2_mono_regular"]
+
+[sub_resource type="FontVariation" id="FontVariation_semibold"]
+base_font = ExtResource("1_sans_regular")
+variation_opentype = {
+"wght": 600.0
+}
+
+[sub_resource type="FontVariation" id="FontVariation_bold"]
+base_font = ExtResource("1_sans_regular")
+variation_opentype = {
+"wght": 700.0
+}
+
+[sub_resource type="FontVariation" id="FontVariation_medium"]
+base_font = ExtResource("1_sans_regular")
+variation_opentype = {
+"wght": 500.0
+}
+
+[resource]
+default_font = ExtResource("1_sans_regular")
+default_font_size = 14
+Button/fonts/font = SubResource("FontVariation_medium")
+LineEdit/fonts/font = ExtResource("1_sans_regular")
+RichTextLabel/fonts/normal_font = ExtResource("2_mono_regular")

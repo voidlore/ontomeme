@@ -1,0 +1,367 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://note.gd" id="1_note"]
+[ext_resource type="Script" path="res://GraphLayer.gd" id="2_graph"]
+
+[node name="Root" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_note")
+
+[node name="Background" type="Panel" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="AppLayout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="Body" type="HSplitContainer" parent="AppLayout"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Sidebar" type="PanelContainer" parent="AppLayout/Body"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(264, 0)
+layout_mode = 2
+theme_type_variation = &"SidebarPanel"
+
+[node name="SidebarVBox" type="VBoxContainer" parent="AppLayout/Body/Sidebar"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="SidebarHeader" type="HBoxContainer" parent="AppLayout/Body/Sidebar/SidebarVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Logo" type="Label" parent="AppLayout/Body/Sidebar/SidebarVBox/SidebarHeader"]
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+text = "◆"
+
+[node name="Brand" type="Label" parent="AppLayout/Body/Sidebar/SidebarVBox/SidebarHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"BrandLabel"
+text = "Ontomeme"
+
+[node name="PaletteButton" type="Button" parent="AppLayout/Body/Sidebar/SidebarVBox/SidebarHeader"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+tooltip_text = "Command palette (Ctrl+P)"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"FlatButton"
+text = "⌘"
+
+[node name="NewNoteButton" type="Button" parent="AppLayout/Body/Sidebar/SidebarVBox/SidebarHeader"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+tooltip_text = "New note (Ctrl+N)"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"FlatButton"
+text = "+"
+
+[node name="SearchBox" type="LineEdit" parent="AppLayout/Body/Sidebar/SidebarVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"SearchEdit"
+placeholder_text = "Search notes   Ctrl+F"
+clear_button_enabled = true
+
+[node name="NotesHeader" type="HBoxContainer" parent="AppLayout/Body/Sidebar/SidebarVBox"]
+layout_mode = 2
+
+[node name="NotesTitle" type="Label" parent="AppLayout/Body/Sidebar/SidebarVBox/NotesHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"SectionLabel"
+text = "NOTES"
+
+[node name="NoteCount" type="Label" parent="AppLayout/Body/Sidebar/SidebarVBox/NotesHeader"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"FaintLabel"
+text = "0"
+
+[node name="NoteScroll" type="ScrollContainer" parent="AppLayout/Body/Sidebar/SidebarVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="NoteList" type="VBoxContainer" parent="AppLayout/Body/Sidebar/SidebarVBox/NoteScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
+
+[node name="SidebarFooter" type="HBoxContainer" parent="AppLayout/Body/Sidebar/SidebarVBox"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="ImportButton" type="Button" parent="AppLayout/Body/Sidebar/SidebarVBox/SidebarFooter"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Import notes from a vault folder"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"FlatButton"
+text = "↓  Import"
+
+[node name="ExportButton" type="Button" parent="AppLayout/Body/Sidebar/SidebarVBox/SidebarFooter"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Export the vault to Downloads"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"FlatButton"
+text = "↑  Export"
+
+[node name="ThemeButton" type="Button" parent="AppLayout/Body/Sidebar/SidebarVBox/SidebarFooter"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(34, 0)
+layout_mode = 2
+tooltip_text = "Toggle light / dark"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"FlatButton"
+text = "☾"
+
+[node name="Editor" type="VBoxContainer" parent="AppLayout/Body"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+
+[node name="TopBar" type="PanelContainer" parent="AppLayout/Body/Editor"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"ToolbarPanel"
+
+[node name="TopBarHBox" type="HBoxContainer" parent="AppLayout/Body/Editor/TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Breadcrumb" type="Label" parent="AppLayout/Body/Editor/TopBar/TopBarHBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"MutedLabel"
+text = "Ontomeme"
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="LayerSwitcher" type="PanelContainer" parent="AppLayout/Body/Editor/TopBar/TopBarHBox"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"SegmentPanel"
+
+[node name="Segments" type="HBoxContainer" parent="AppLayout/Body/Editor/TopBar/TopBarHBox/LayerSwitcher"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="BtnRaw" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox/LayerSwitcher/Segments"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Edit the note source"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"SegmentButton"
+toggle_mode = true
+button_pressed = true
+text = "Edit"
+
+[node name="BtnStructured" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox/LayerSwitcher/Segments"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Outline: headings, lists, code"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"SegmentButton"
+toggle_mode = true
+text = "Outline"
+
+[node name="BtnVisual" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox/LayerSwitcher/Segments"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Reading view"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"SegmentButton"
+toggle_mode = true
+text = "Read"
+
+[node name="BtnGraph" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox/LayerSwitcher/Segments"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Graph of linked notes"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"SegmentButton"
+toggle_mode = true
+text = "Graph"
+
+[node name="DeleteButton" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Delete this note"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"DangerButton"
+text = "Delete"
+
+[node name="ContentPanel" type="PanelContainer" parent="AppLayout/Body/Editor"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"EditorPanel"
+
+[node name="EmptyStatePanel" type="CenterContainer" parent="AppLayout/Body/Editor/ContentPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="EmptyVBox" type="VBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/EmptyStatePanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="EmptyIcon" type="Label" parent="AppLayout/Body/Editor/ContentPanel/EmptyStatePanel/EmptyVBox"]
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+theme_override_font_sizes/font_size = 34
+text = "◆"
+horizontal_alignment = 1
+
+[node name="EmptyStateLabel" type="Label" parent="AppLayout/Body/Editor/ContentPanel/EmptyStatePanel/EmptyVBox"]
+layout_mode = 2
+theme_type_variation = &"HeadingLabel"
+text = "No note open"
+horizontal_alignment = 1
+
+[node name="EmptyHintLabel" type="Label" parent="AppLayout/Body/Editor/ContentPanel/EmptyStatePanel/EmptyVBox"]
+layout_mode = 2
+theme_type_variation = &"MutedLabel"
+text = "Pick a note from the sidebar, or start a new one."
+horizontal_alignment = 1
+
+[node name="EmptyNewButton" type="Button" parent="AppLayout/Body/Editor/ContentPanel/EmptyStatePanel/EmptyVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_default_cursor_shape = 2
+theme_type_variation = &"AccentButton"
+text = "New note    Ctrl+N"
+
+[node name="NoteContent" type="MarginContainer" parent="AppLayout/Body/Editor/ContentPanel"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/margin_left = 48
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 48
+theme_override_constants/margin_bottom = 12
+
+[node name="DocVBox" type="VBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TitleEdit" type="LineEdit" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"TitleEdit"
+placeholder_text = "Untitled"
+
+[node name="NoteMeta" type="Label" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"FaintLabel"
+
+[node name="MetaGap" type="HSeparator" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox"]
+layout_mode = 2
+
+[node name="LayerStack" type="VBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RawTextLayer" type="TextEdit" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/LayerStack"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+placeholder_text = "Start writing…  # headings, - lists, [[links]], ```3d scenes"
+wrap_mode = 1
+caret_blink = true
+highlight_current_line = false
+
+[node name="DocScroll" type="ScrollContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/LayerStack"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="DocLayers" type="VBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/LayerStack/DocScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StructuredLayer" type="VBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/LayerStack/DocScroll/DocLayers"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="VisualLayer" type="VBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/LayerStack/DocScroll/DocLayers"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="GraphLayer" type="Control" parent="AppLayout/Body/Editor/ContentPanel"]
+unique_name_in_owner = true
+visible = false
+clip_contents = true
+layout_mode = 2
+script = ExtResource("2_graph")
+
+[node name="StatusBar" type="PanelContainer" parent="AppLayout"]
+layout_mode = 2
+theme_type_variation = &"StatusPanel"
+
+[node name="StatusHBox" type="HBoxContainer" parent="AppLayout/StatusBar"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="StatusLabel" type="Label" parent="AppLayout/StatusBar/StatusHBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"FaintLabel"
+text = "Ready"
+clip_text = true
+
+[node name="WordCount" type="Label" parent="AppLayout/StatusBar/StatusHBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"FaintLabel"
+
+[node name="ModeLabel" type="Label" parent="AppLayout/StatusBar/StatusHBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"FaintLabel"
+text = "Edit"
+
+[node name="ImportFileDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Select a vault folder to import"
+size = Vector2i(720, 480)
+ok_button_text = "Import"
+file_mode = 2
+access = 2

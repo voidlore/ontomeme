@@ -1,0 +1,6 @@
+# Godot editor cache / imported assets — regenerated on every run
+.godot/
+
+# Godot export output
+/build/
+*.tmp
