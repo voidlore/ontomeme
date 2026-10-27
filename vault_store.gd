@@ -3,6 +3,7 @@ extends Node
 
 const TresValidatorScript = preload("res://tres_validator.gd")
 const ConflictResolverScript = preload("res://conflict_resolver.gd")
+const StarterContent = preload("res://starter_content.gd")
 
 ## VaultStore — persistent note storage engine.
 ##
@@ -28,12 +29,35 @@ static var _mtimes: Dictionary = {}
 
 const ASSET_DIRS: Array[String] = ["models"]
 
+## True when this launch created the default vault and filled it with the
+## starter notes (the app then opens the tutorials).
+static var first_run: bool = false
+
+## A startup problem worth telling the user about ("" if none).
+static var startup_warning: String = ""
+
 
 func _ready() -> void:
 	# A vault opened before the autoload is ready (a test's throwaway vault)
 	# wins; otherwise the startup vault would silently replace it.
 	if vault_path == "":
-		open_vault(VaultRegistry.startup_vault(), not _cmdline_vault())
+		open_startup_vault(VaultRegistry.startup_vault(), VaultRegistry.default_vault(), not _cmdline_vault())
+
+
+## Open `path`; seed it if it is the default vault being created for the first
+## time; fall back to `fallback_dir` if `path` cannot be created.
+static func open_startup_vault(path: String, default_vault: String, remember: bool,
+		fallback_dir: String = OS.get_user_data_dir().path_join("vault")) -> void:
+	first_run = StarterContent.is_first_run(path, default_vault)
+	startup_warning = ""
+	open_vault(path, remember)
+	if not DirAccess.dir_exists_absolute(vault_path):
+		startup_warning = "Couldn't create your notes folder at %s, so notes are kept in %s instead." % [path, fallback_dir]
+		push_warning(startup_warning)
+		first_run = not DirAccess.dir_exists_absolute(fallback_dir)
+		open_vault(fallback_dir, remember)
+	if first_run:
+		StarterContent.seed_vault()
 
 
 static func _cmdline_vault() -> bool:

@@ -4,7 +4,7 @@ extends RefCounted
 ##   const TestVault = preload("res://tests/test_vault.gd")
 ##   TestVault.open("progress")   # call after setting the store file_overrides
 
-const SeedTutorials = preload("res://tests/seed_tutorials.gd")
+const SeedTutorials = preload("res://tutorials_content.gd")
 const SeedQuizNotes = preload("res://tests/seed_quiz_notes.gd")
 
 

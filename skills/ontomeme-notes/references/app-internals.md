@@ -12,6 +12,8 @@
 | `progress_store.gd` | per-vault quiz progress → ✓ / ● marks |
 | `journey_store.gd` / `journey_panel.gd` | Learning Journey data and tab UI |
 | `icons.gd` | code-drawn icons |
+| `starter_content.gd` | first-run vault: `tutorials_content.gd` (the tutorials + starter Journey) and `ontomeme-notes/` imported into a Memetics folder |
+| `note_importer.gd` | Markdown folder → notes (front matter, topics, objectives); used by `scripts/import_notes.gd` and first run |
 | `tests/*_test.gd` | SceneTree test scripts (headless). `tests/seed_*.gd` = seeders |
 | `scripts/*.gd` | lint / import / snapshot tools used by the notes skill |
 
@@ -53,6 +55,11 @@
   `user://test-vault-<name>/` and seeds the tutorials and Godot course. A test
   that relies on notes already in the user's vault passes on your machine and
   fails in CI.
+- **First run = the default vault (`~/Documents/Ontomeme`) does not exist
+  yet.** `VaultStore.open_startup_vault` then seeds it and the app opens Start
+  Here: Tutorials. Simulate a brand-new user without touching yours:
+  `XDG_CONFIG_HOME=<tmp>/config XDG_DATA_HOME=<tmp>/data` with
+  `<tmp>/config/user-dirs.dirs` setting `XDG_DOCUMENTS_DIR`.
 - **The VaultStore autoload opens the startup vault only if none is open.**
   Before that guard existed, its `_ready()` silently replaced a vault a test had
   opened in `_init`, so UI tests ran against the user's real vault.

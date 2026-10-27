@@ -1,0 +1,94 @@
+extends SceneTree
+## First run: a new default vault is seeded with the tutorials and the memetics
+## course and the app opens on the tutorials; an existing vault is left alone;
+## an uncreatable vault falls back with a readable message.
+##   headless:  godot --headless --path . -s res://tests/first_run_test.gd
+##   + images:  godot --path . -s res://tests/first_run_test.gd -- <out_dir>
+
+const TestVault = preload("res://tests/test_vault.gd")
+const StarterContent = preload("res://starter_content.gd")
+
+var fails: int = 0
+var out: String = ""
+
+
+func check(cond: bool, what: String) -> void:
+	print(("PASS  " if cond else "FAIL  ") + what)
+	if not cond:
+		fails += 1
+
+
+func frames(n: int = 3) -> void:
+	for i in range(n):
+		await process_frame
+
+
+func _init() -> void:
+	JourneyStore.file_override = "user://test_journey_first_run.json"   # never touch the real journey
+	JourneyStore.reset()
+	ProgressStore.file_override = "user://test_progress_first_run.json"   # never touch real progress
+	ProgressStore.reset()
+	var args := OS.get_cmdline_user_args()
+	out = args[0] if args.size() > 0 else ""
+	DisplayServer.window_set_size(Vector2i(1280, 860))
+	await frames(2)
+
+	# Stands in for ~/Documents/Ontomeme, which a test must never create
+	var fake_default: String = ProjectSettings.globalize_path("user://test-vault-first-run/")
+	var fallback: String = ProjectSettings.globalize_path("user://test-vault-first-run-fallback/")
+	TestVault.remove_tree(fake_default)
+	TestVault.remove_tree(fallback)
+
+	check(StarterContent.is_first_run(fake_default, fake_default), "missing default vault = first run")
+	check(not StarterContent.is_first_run(fake_default, fake_default + "other/"), "another vault is never a first run")
+
+	# First launch: create and seed
+	VaultStore.open_startup_vault(fake_default, fake_default, false)
+	var n: int = VaultStore.note_list.size()
+	check(VaultStore.first_run and VaultStore.startup_warning == "", "first launch is a first run, no warning")
+	check(VaultStore.get_note_index("Start Here: Tutorials") >= 0 and VaultStore.get_note_index("Tutorial 7: Learning Objectives") >= 0, "tutorials are seeded")
+	check(VaultStore.get_note_index("History of Memetics") >= 0 and VaultStore.get_note_index("The Memetics Debate") >= 0, "memetics course is seeded")
+	check(VaultStore.folders.has("Tutorials") and VaultStore.folders.has("Memetics"), "filed in Tutorials and Memetics folders (%s)" % [VaultStore.folders])
+	check(VaultStore.folder_of(VaultStore.note_list[VaultStore.get_note_index("History of Memetics")]) == "Memetics", "memetics lessons are in the Memetics folder")
+	check(FileAccess.file_exists(fake_default.path_join("models/rocket.glb")), "sample rocket.glb is written")
+	check(not JourneyStore.topics().is_empty(), "the Learning Journey has a starter topic")
+
+	# The app opens on the tutorials
+	var app: Control = load("res://note.tscn").instantiate()
+	get_root().add_child(app)
+	await frames(6)
+	check(app.current_note != null and app.current_note.title == "Start Here: Tutorials", "first run opens Start Here: Tutorials (%s)" % (app.current_note.title if app.current_note else "none"))
+	check(LayerEngine.current_mode == "visual", "…in the Read view (%s)" % LayerEngine.current_mode)
+	check(app.status_label.text.begins_with("Welcome"), "status bar welcomes the user (%s)" % app.status_label.text)
+	if out != "" and DisplayServer.get_name() != "headless":
+		await create_timer(1.5).timeout
+		get_root().get_texture().get_image().save_png(out.path_join("first_run.png"))
+		print("saved first_run")
+	app._execute_command("about")
+	await frames(2)
+	var about: AcceptDialog = null
+	for c in app.get_children():
+		if c is AcceptDialog and c.title == "About Ontomeme":
+			about = c
+	check(about != null and about.dialog_text.contains(VaultStore.vault_path), "About shows the version and the notes folder")
+	app.queue_free()
+	await frames(2)
+
+	# Second launch: the vault exists, nothing is re-seeded
+	VaultStore.open_startup_vault(fake_default, fake_default, false)
+	check(not VaultStore.first_run and VaultStore.note_list.size() == n, "second launch is not a first run and adds nothing (%d notes)" % VaultStore.note_list.size())
+
+	# A vault folder that cannot be created falls back, and says so
+	VaultStore.open_startup_vault("/proc/ontomeme-cannot-exist/", "/proc/ontomeme-cannot-exist/", false, fallback)
+	check(VaultStore.vault_path == VaultRegistry.normalize(fallback), "uncreatable vault falls back (%s)" % VaultStore.vault_path)
+	check(VaultStore.startup_warning.contains("Couldn't create"), "…with a readable warning")
+	check(VaultStore.first_run and VaultStore.get_note_index("Start Here: Tutorials") >= 0, "…and the fallback vault is seeded")
+
+	TestVault.remove_tree(fake_default)
+	TestVault.remove_tree(fallback)
+	for f in [JourneyStore.file_override, ProgressStore.file_override]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
+	JourneyStore.file_override = ""
+	ProgressStore.file_override = ""
+	print("RESULT: %s (%d failures)" % ["ALL PASS" if fails == 0 else "FAILED", fails])
+	quit(1 if fails > 0 else 0)

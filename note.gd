@@ -10,6 +10,7 @@ const AUTO_SAVE_DELAY: float = 0.8
 const MODE_NAMES: Dictionary = {"raw": "Edit", "structured": "Outline", "visual": "Read", "graph": "Graph", "journey": "Journey"}
 const APP_NAME: String = "Ontomeme"
 const WATCH_INTERVAL: float = 1.5
+const FIRST_NOTE: String = "Start Here: Tutorials"   # opened on first run
 
 @onready var background: Panel = %Background
 @onready var search_box: LineEdit = %SearchBox
@@ -144,12 +145,20 @@ func _ready() -> void:
 	_watch_timer.timeout.connect(check_disk_changes)
 	add_child(_watch_timer)
 	_watch_timer.start()
-	if VaultStore.note_list.size() > 0:
+	if VaultStore.first_run and VaultStore.get_note_index(FIRST_NOTE) >= 0:
+		open_note_by_title(FIRST_NOTE)
+		_switch_layer("visual")
+	elif VaultStore.note_list.size() > 0:
 		_open_note(VaultStore.note_list[0])
 	else:
 		_show_empty_state()
 	_update_readable_width()
-	_update_status("Ready  ·  Ctrl+P commands  ·  Ctrl+N new note")
+	if VaultStore.startup_warning != "":
+		_update_status(VaultStore.startup_warning)
+	elif VaultStore.first_run:
+		_update_status("Welcome to Ontomeme  ·  start with the tutorials  ·  Ctrl+P commands")
+	else:
+		_update_status("Ready  ·  Ctrl+P commands  ·  Ctrl+N new note")
 
 
 # ── Layout ──────────────────────────────────────────────────────────────────
@@ -798,6 +807,7 @@ func _build_palette_items(filter_text: String = "") -> void:
 		{"label": "Import 3D model… (.glb, .gltf, .fbx)", "hint": "3d", "action": "import_model"},
 		{"label": "Reset quiz progress", "hint": "", "action": "reset_progress"},
 		{"label": "Export vault", "hint": "", "action": "export"},
+		{"label": "About Ontomeme", "hint": "", "action": "about"},
 	]
 	for v in VaultRegistry.recent():
 		if v != VaultStore.vault_path:
@@ -1000,6 +1010,8 @@ func _execute_command(action: String) -> void:
 		_open_vault_dialog()
 	elif action == "reveal_vault":
 		OS.shell_open(VaultStore.vault_path)
+	elif action == "about":
+		_show_about()
 	elif action == "new_folder":
 		_new_folder_prompt("")
 	elif action.begins_with("insert3d:"):
@@ -1442,6 +1454,21 @@ func _after_vault_op(status: String) -> void:
 	if current_note != null and current_mode != "journey":
 		breadcrumb.text = _crumb(current_note)
 	_update_status(status)
+
+
+## Version (from project.godot) and where the notes live.
+func _show_about() -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = "About " + APP_NAME
+	dlg.dialog_text = "%s %s\n\nYour notes are in:\n%s" % [APP_NAME, app_version(), VaultStore.vault_path]
+	dlg.confirmed.connect(dlg.queue_free)
+	dlg.canceled.connect(dlg.queue_free)
+	add_child(dlg)
+	dlg.popup_centered()
+
+
+static func app_version() -> String:
+	return str(ProjectSettings.get_setting("application/config/version", "dev"))
 
 
 func _load_collapsed() -> void:
