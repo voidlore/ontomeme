@@ -19,10 +19,73 @@ float in space, a deck of flashcards.
 Built with [Godot 4](https://godotengine.org): a native desktop app, no browser,
 no account, no cloud. Your notes stay on your machine.
 
-## Download
+## Install
 
-Builds for Windows, macOS (Apple Silicon) and Linux will be on the
-[Releases](../../releases) page from v0.1.0.
+Download Ontomeme from the [Releases](../../releases) page. Pick the file for
+your computer:
+
+| Computer | File to download |
+|---|---|
+| Windows | `Ontomeme-<version>-windows-x86_64.zip` |
+| Mac (Apple Silicon or Intel) | `Ontomeme-<version>-macos.zip` |
+| Linux | `Ontomeme-<version>-linux-x86_64.tar.gz` |
+
+Ontomeme is free and not yet "signed" with a paid certificate from Apple or
+Microsoft. That means your computer will warn you the first time you open it.
+This is expected. The steps below show you how to open it anyway. You only
+need to do this once.
+
+Your notes are kept in a folder called **Ontomeme** inside your **Documents**
+folder.
+
+### Windows
+
+1. Open your **Downloads** folder and find the `.zip` file you downloaded.
+2. Right-click it and choose **Extract All…**, then click **Extract**.
+3. Open the new folder and double-click **Ontomeme**.
+4. A blue box may appear saying *"Windows protected your PC"*. Click
+   **More info**, then click **Run anyway**.
+
+Tip: to find Ontomeme easily next time, right-click **Ontomeme** and choose
+**Pin to Start**, or move the folder somewhere you like, such as your
+Documents folder.
+
+### Mac
+
+1. Open your **Downloads** folder and double-click the `.zip` file. You will
+   get an app called **Ontomeme**.
+2. Drag **Ontomeme** into your **Applications** folder.
+3. Open **Applications**, then **right-click** (or hold **Control** and click)
+   **Ontomeme** and choose **Open**. In the box that appears, click **Open**
+   again.
+
+If your Mac says *"Ontomeme can't be opened"* or *"Apple could not verify…"*
+and there is no **Open** button:
+
+1. Click **Done** (or **OK**) to close the message.
+2. Click the **Apple menu** (the apple in the top-left corner of the screen) → **System Settings** → **Privacy & Security**.
+3. Scroll down to the **Security** section. Next to the line about
+   Ontomeme, click **Open Anyway**.
+4. Enter your Mac password if asked, then click **Open Anyway** once more.
+
+After the first time, Ontomeme opens with a normal double-click.
+
+### Linux
+
+1. Extract the download, for example by right-clicking it and choosing
+   **Extract Here**, or in a terminal:
+   ```
+   tar -xzf Ontomeme-*-linux-x86_64.tar.gz
+   ```
+2. Make sure the app is allowed to run (the download should already allow
+   this):
+   ```
+   chmod +x Ontomeme-*-linux/Ontomeme.x86_64
+   ```
+3. Double-click **Ontomeme.x86_64**, or run it from a terminal:
+   ```
+   ./Ontomeme-*-linux/Ontomeme.x86_64
+   ```
 
 ## Run from source
 

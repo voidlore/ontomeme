@@ -1,0 +1,129 @@
+name: release
+
+# Push a tag like v0.1.0 to build Ontomeme for Windows, macOS and Linux and
+# publish the three downloads on a GitHub Release. The tag must match
+# config/version in project.godot (without the leading "v"); a pre-release tag
+# such as v0.1.0-rc1 is published as a GitHub pre-release.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Releases are built on the public repo only
+    if: github.repository == 'voidlore/ontomeme'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GODOT_VERSION: 4.7.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches project version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(sed -n 's/^config\/version="\(.*\)"$/\1/p' project.godot)"
+          echo "tag=$tag project=$version"
+          # v0.1.0 or a pre-release of it such as v0.1.0-rc1
+          if [ "$tag" != "$version" ] && [ "${tag%%-*}" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match config/version=\"$version\" in project.godot"
+            exit 1
+          fi
+          echo "VERSION=$tag" >> "$GITHUB_ENV"
+
+      - name: Install Godot and export templates
+        run: |
+          cd "$RUNNER_TEMP"
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          echo "GODOT=$RUNNER_TEMP/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest"
+          unzip -q templates.tpz -d tpl
+          mv tpl/templates/* "$dest/"
+          ls "$dest"
+
+      - name: Run tests
+        run: tests/run_all.sh
+
+      - name: Export
+        run: |
+          "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
+          mkdir -p build/linux build/windows build/macos
+          export_one() {
+            log="build/export-$(echo "$1" | tr ' ' '_').log"
+            "$GODOT" --headless --path . --export-release "$1" "$2" 2>&1 | tee "$log"
+            if [ ! -s "$2" ] || grep -qE '^ERROR|SCRIPT ERROR' "$log"; then
+              echo "::error::Export of preset \"$1\" failed"
+              exit 1
+            fi
+          }
+          export_one "Linux x86_64"   build/linux/Ontomeme.x86_64
+          export_one "Windows x86_64" build/windows/Ontomeme.exe
+          export_one "macOS"          build/macos/Ontomeme.zip
+
+      - name: Smoke-test the Linux build
+        run: |
+          # A real first run in a sandboxed home: no --vault, so the app
+          # creates <Documents>/Ontomeme and seeds the starter content.
+          t="$(mktemp -d)"
+          mkdir -p "$t/config" "$t/data" "$t/Docs"
+          echo "XDG_DOCUMENTS_DIR=\"$t/Docs\"" > "$t/config/user-dirs.dirs"
+          XDG_CONFIG_HOME="$t/config" XDG_DATA_HOME="$t/data" \
+            timeout 150 build/linux/Ontomeme.x86_64 --headless --quit-after 200 2>&1 | tee build/smoke.log
+          if grep -qE 'SCRIPT ERROR|Parse Error' build/smoke.log; then
+            echo "::error::The exported Linux build logged script errors"
+            exit 1
+          fi
+          v="$t/Docs/Ontomeme"
+          ls -R "$v"
+          [ -d "$v/Tutorials" ] || { echo "::error::first run did not seed Tutorials/"; exit 1; }
+          [ -f "$v/models/rocket.glb" ] || { echo "::error::first run did not write models/rocket.glb"; exit 1; }
+          n="$(ls "$v/Memetics" | wc -l)"
+          [ "$n" -eq 6 ] || { echo "::error::expected 6 Memetics notes, found $n"; exit 1; }
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          v="$VERSION"
+          # Windows: a single Ontomeme.exe inside a folder, zipped
+          mkdir -p "pkg/Ontomeme-$v-windows"
+          cp build/windows/Ontomeme.exe "pkg/Ontomeme-$v-windows/"
+          (cd pkg && zip -qr "../dist/Ontomeme-$v-windows-x86_64.zip" "Ontomeme-$v-windows")
+          # macOS: Godot already writes a zip holding Ontomeme.app (ad-hoc signed)
+          cp build/macos/Ontomeme.zip "dist/Ontomeme-$v-macos.zip"
+          # Linux: tar.gz keeps the executable bit
+          mkdir -p "pkg/Ontomeme-$v-linux"
+          cp build/linux/Ontomeme.x86_64 "pkg/Ontomeme-$v-linux/"
+          chmod +x "pkg/Ontomeme-$v-linux/Ontomeme.x86_64"
+          tar -C pkg -czf "dist/Ontomeme-$v-linux-x86_64.tar.gz" "Ontomeme-$v-linux"
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          ls -la dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Ontomeme ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            Download the file for your computer below, then follow the
+            [install steps](https://github.com/${{ github.repository }}#install).
+            These builds are not signed yet, so Windows and macOS will warn you
+            the first time you open Ontomeme; the install steps show how to
+            open it anyway.
+
+            - Windows: `Ontomeme-${{ env.VERSION }}-windows-x86_64.zip`
+            - macOS (Apple Silicon and Intel): `Ontomeme-${{ env.VERSION }}-macos.zip`
+            - Linux: `Ontomeme-${{ env.VERSION }}-linux-x86_64.tar.gz`
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true

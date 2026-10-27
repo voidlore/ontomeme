@@ -1,6 +1,7 @@
 [application]
 
 config/name="Ontomeme"
+config/version="0.1.0"
 config/description="Ontomeme — immersive notes, folders and a learning journey, built on Godot"
 config/icon=""
 run/main_scene="res://note.tscn"
@@ -33,3 +34,7 @@ new_note={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":true,"meta_pressed":false,"pressed":false,"keycode":78,"physical_keycode":78,"key_label":0,"unicode":110,"location":0,"echo":false,"script":null)
 ]
 }
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true
