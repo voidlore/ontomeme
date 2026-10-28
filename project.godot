@@ -3,7 +3,7 @@
 config/name="Ontomeme"
 config/version="0.1.0"
 config/description="Ontomeme — immersive notes, folders and a learning journey, built on Godot"
-config/icon=""
+config/icon="res://Ontomeme_Logo.png"
 run/main_scene="res://note.tscn"
 config/features=PackedStringArray("4.2", "Forward Plus")
 

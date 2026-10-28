@@ -1329,12 +1329,10 @@ func _crumb(note: ContentLayer) -> String:
 
 func _build_vault_ui() -> void:
 	var header: Node = get_node_or_null("AppLayout/Body/Sidebar/SidebarVBox/SidebarHeader")
-	var brand: Label = header.get_node_or_null("Brand") if header != null else null
-	if brand != null:
-		brand.text = APP_NAME
 	get_window().title = APP_NAME
-	# Vault switcher, under the brand row
+	# Vault switcher, first in the header row beside the palette / new-note buttons
 	_vault_btn = Button.new()
+	_vault_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_vault_btn.name = "VaultButton"
 	_vault_btn.theme_type_variation = &"FlatButton"
 	_vault_btn.icon = Icons.get_icon("vault", 14)
@@ -1343,7 +1341,8 @@ func _build_vault_ui() -> void:
 	_vault_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_vault_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_vault_btn.pressed.connect(_show_vault_menu)
-	header.add_sibling(_vault_btn)
+	header.add_child(_vault_btn)
+	header.move_child(_vault_btn, 0)
 	_vault_menu = PopupMenu.new()
 	_vault_menu.name = "VaultMenu"
 	_vault_menu.id_pressed.connect(_on_vault_menu)
