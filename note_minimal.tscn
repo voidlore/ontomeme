@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://e6c77c16fc83e7cd"]
+[gd_scene load_steps=2 format=3 uid="uid://dpc2vnxfgi13c"]
 
 [node name="Root" type="Control"]
 anchors_preset = 15
