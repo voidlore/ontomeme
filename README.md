@@ -1,9 +1,7 @@
 # Ontomeme
 
-**Notes you can step inside.** Ontomeme is a desktop note-taking app for
-learning: you write plain Markdown, and a fenced ```` ```3d ```` block turns into
-a live 3D scene right inside the note — a model to orbit, a quiz whose answers
-float in space, a deck of flashcards.
+The multimedia note-taking app for humans and their agents. Notes are stored as text files, and Godot-native text resource files. Designed to optimize AI via MCP toward autodidactic pursuits, self-directed educational goals, and knowledge sharing.
+Write plain Markdown, and ```` ```3d ```` blocks which turn into live 3D scenes right inside your notes. Display 3d models and orbit around them. Create a quiz whose answers float in space.
 
 - **Markdown notes in real folders** — your vault is a directory on disk. Open
   it in any editor, back it up, version it.
