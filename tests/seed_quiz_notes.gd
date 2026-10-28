@@ -198,13 +198,13 @@ learn: Containers and Layout
 ```
 """,
 
-"Quiz: Senedril": """# Quiz: Senedril
+"Quiz: Ontomeme": """# Quiz: Ontomeme
 
 How well do you know this app? Wrong answers link straight back to the note that covers them.
 
 ```3d
 preset: quiz
-caption: Senedril basics · 4 questions
+caption: Ontomeme basics · 4 questions
 color: #6c8cff
 height: 440
 q: What turns into a live 3D scene in Read view?
@@ -228,7 +228,7 @@ a: Ctrl+S
 a: Ctrl+3
 why: Ctrl+P is the command palette; Ctrl+N makes a note.
 learn: Getting Started
-q: Which component is Senedril's note data model?
+q: Which component is Ontomeme's note data model?
 a: NoteManager
 a: LayerRenderer
 a*: ContentLayer

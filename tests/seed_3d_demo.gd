@@ -4,7 +4,7 @@ extends SceneTree
 
 const BODY: String = """# 3D Scenes
 
-Senedril notes can hold live 3D scenes. Write a fenced block tagged 3d, then switch to Read (Ctrl+3). Drag to orbit, Ctrl+scroll to zoom, and press Expand for a full-window view. Ctrl+P → "Insert 3D scene" adds one for you.
+Ontomeme notes can hold live 3D scenes. Write a fenced block tagged 3d, then switch to Read (Ctrl+3). Drag to orbit, Ctrl+scroll to zoom, and press Expand for a full-window view. Ctrl+P → "Insert 3D scene" adds one for you.
 
 ## Spiral galaxy
 ```3d

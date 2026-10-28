@@ -62,7 +62,7 @@ static func display_name(path: String) -> String:
 	return normalize(path).trim_suffix("/").get_file()
 
 
-## Where notes lived before vaults existed (the app was called Senedril).
+## Where notes lived before vaults existed (older builds used this folder name).
 static func legacy_vault() -> String:
 	return OS.get_data_dir().path_join("godot/app_userdata/Senedril/senedril-vault")
 
