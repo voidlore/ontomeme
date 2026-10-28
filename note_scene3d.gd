@@ -898,7 +898,7 @@ func _on_input(event: InputEvent) -> void:
 			_dragging = mb.pressed and not mb.double_click
 			_idle = 0.0
 			_container.accept_event()
-		elif mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and (mb.ctrl_pressed or expanded):
+		elif mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and (mb.ctrl_pressed or mb.meta_pressed or expanded):
 			if mb.pressed:
 				var factor: float = 0.9 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.1
 				_distance = clampf(_distance * factor, 1.5, 60.0)

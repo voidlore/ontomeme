@@ -12,7 +12,8 @@
 | `progress_store.gd` | per-vault quiz progress → ✓ / ● marks |
 | `journey_store.gd` / `journey_panel.gd` | Learning Journey data and tab UI |
 | `icons.gd` | code-drawn icons |
-| `starter_content.gd` | first-run vault: `tutorials_content.gd` (the tutorials + starter Journey) and `ontomeme-notes/` imported into a Memetics folder |
+| `starter_content.gd` | first-run vault: `tutorials_content.gd` (the tutorials + starter Journey), `godot_course_content.gd` (Godot folder) and `ontomeme-notes/` imported into a Memetics folder |
+| `ui_scale.gd` | interface scale = screen scale (Retina 2×, Windows DPI) × user zoom (Ctrl/Cmd += - 0), saved in `user://display.json` |
 | `note_importer.gd` | Markdown folder → notes (front matter, topics, objectives); used by `scripts/import_notes.gd` and first run |
 | `tests/*_test.gd` | SceneTree test scripts (headless). `tests/seed_*.gd` = seeders |
 | `scripts/*.gd` | lint / import / snapshot tools used by the notes skill |
@@ -81,6 +82,11 @@
 - **Disk mirroring:** the app polls a cheap signature of the vault tree every
   1.5 s and on window focus. It skips the poll while an autosave is pending,
   so it doesn't fight the editor.
+- **Shortcuts: test `_cmd(k)` (Ctrl or Cmd), never `ctrl_pressed` alone.**
+  Mac users press Cmd; a Ctrl-only check made every shortcut dead on macOS.
+- **Headless skips UiScale** (no screen); note.gd still sets the window's
+  minimum size there, because a headless window *is* its minimum size and
+  without it the root shrinks to 64×64 and every synthetic click misses.
 - **Static typing:** `Array.any()` on `PackedStringArray` and `clip_text` on
   `LinkButton` don't exist. Run `--check-only --script res://file.gd` on every
   changed script before running tests.

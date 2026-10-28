@@ -61,7 +61,7 @@ static func open_startup_vault(path: String, default_vault: String, remember: bo
 	if not DirAccess.dir_exists_absolute(vault_path):
 		startup_warning = "Couldn't create your notes folder at %s, so notes are kept in %s instead." % [path, fallback_dir]
 		push_warning(startup_warning)
-		first_run = not DirAccess.dir_exists_absolute(fallback_dir)
+		first_run = StarterContent.is_first_run(fallback_dir, fallback_dir)
 		open_vault(fallback_dir, remember)
 	if first_run:
 		StarterContent.seed_vault()
@@ -297,6 +297,7 @@ static func save_note(note: ContentLayer, stamp: bool = true) -> void:
 		return
 	if stamp:
 		note.modified = Time.get_datetime_string_from_system()
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())   # a note created in a new folder
 	var err := ResourceSaver.save(note, path)
 	if err == OK:
 		_mtimes[path] = FileAccess.get_modified_time(path)

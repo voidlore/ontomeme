@@ -10,6 +10,8 @@ const AUTO_SAVE_DELAY: float = 0.8
 const MODE_NAMES: Dictionary = {"raw": "Edit", "structured": "Outline", "visual": "Read", "graph": "Graph", "journey": "Journey"}
 const APP_NAME: String = "Ontomeme"
 const WATCH_INTERVAL: float = 1.5
+const UiScale = preload("res://ui_scale.gd")
+const StarterContent = preload("res://starter_content.gd")
 const FIRST_NOTE: String = "Start Here: Tutorials"   # opened on first run
 
 @onready var background: Panel = %Background
@@ -85,7 +87,11 @@ var _last_sig: String = ""
 
 func _ready() -> void:
 	_undo_engine = get_node_or_null("/root/UndoRedoEngine")
-	get_window().min_size = Vector2i(820, 520)
+	if DisplayServer.get_name() != "headless":
+		UiScale.apply(get_window(), true)
+		get_window().dpi_changed.connect(func() -> void: UiScale.apply(get_window()))
+	else:
+		get_window().min_size = UiScale.BASE_MIN_SIZE   # headless: the window *is* its minimum size
 	get_window().files_dropped.connect(_on_files_dropped)
 	_apply_theme(_is_dark_mode)
 
@@ -643,11 +649,16 @@ func _switch_layer(mode: String) -> void:
 
 # ── Input ───────────────────────────────────────────────────────────────────
 
+## Shortcuts say Ctrl; on a Mac, Cmd works the same.
+static func _cmd(k: InputEventWithModifiers) -> bool:
+	return k.ctrl_pressed or k.meta_pressed
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
 	var k: InputEventKey = event as InputEventKey
-	if not k.ctrl_pressed:
+	if not _cmd(k):
 		return
 	var handled: bool = true
 	match k.keycode:
@@ -688,13 +699,17 @@ func _input(event: InputEvent) -> void:
 		close_scene_overlay()
 		get_viewport().set_input_as_handled()
 		return
-	if k.ctrl_pressed and k.keycode == KEY_P:
+	if _cmd(k) and k.keycode in [KEY_EQUAL, KEY_PLUS, KEY_KP_ADD, KEY_MINUS, KEY_KP_SUBTRACT, KEY_0, KEY_KP_0]:
+		# Zoom works from anywhere, even inside the editor
+		_execute_command("zoom_in" if k.keycode in [KEY_EQUAL, KEY_PLUS, KEY_KP_ADD] else "zoom_out" if k.keycode in [KEY_MINUS, KEY_KP_SUBTRACT] else "zoom_reset")
+		get_viewport().set_input_as_handled()
+	elif _cmd(k) and k.keycode == KEY_P:
 		if _palette_visible:
 			_close_palette()
 		else:
 			_open_palette()
 		get_viewport().set_input_as_handled()
-	elif k.ctrl_pressed and k.keycode == KEY_N and raw_text_layer.has_focus():
+	elif _cmd(k) and k.keycode == KEY_N and raw_text_layer.has_focus():
 		# TextEdit would swallow Ctrl+N before _unhandled_input sees it
 		_on_new_note_pressed()
 		get_viewport().set_input_as_handled()
@@ -828,6 +843,10 @@ func _build_palette_items(filter_text: String = "") -> void:
 		{"label": "Import 3D model… (.glb, .gltf, .fbx)", "hint": "3d", "action": "import_model"},
 		{"label": "Reset quiz progress", "hint": "", "action": "reset_progress"},
 		{"label": "Export vault", "hint": "", "action": "export"},
+		{"label": "Add the tutorials and starter course", "hint": "", "action": "add_starter"},
+		{"label": "Zoom in (Ctrl+=)", "hint": "", "action": "zoom_in"},
+		{"label": "Zoom out (Ctrl+-)", "hint": "", "action": "zoom_out"},
+		{"label": "Actual size (Ctrl+0)", "hint": "", "action": "zoom_reset"},
 		{"label": "About Ontomeme", "hint": "", "action": "about"},
 	]
 	for v in VaultRegistry.recent():
@@ -1033,6 +1052,18 @@ func _execute_command(action: String) -> void:
 		OS.shell_open(VaultStore.vault_path)
 	elif action == "about":
 		_show_about()
+	elif action == "add_starter":
+		_flush_pending_save()
+		StarterContent.seed_vault()
+		_refresh_note_list()
+		open_note_by_title(FIRST_NOTE)
+		_switch_layer("visual")
+		_update_status("Added the tutorials and the Memetics course")
+	elif action in ["zoom_in", "zoom_out", "zoom_reset"]:
+		UiScale.set_zoom(1.0 if action == "zoom_reset" else UiScale.step_zoom(1 if action == "zoom_in" else -1))
+		if DisplayServer.get_name() != "headless":
+			UiScale.apply(get_window())
+		_update_status("Zoom %d%%" % roundi(UiScale.zoom * 100))
 	elif action == "new_folder":
 		_new_folder_prompt("")
 	elif action.begins_with("insert3d:"):
