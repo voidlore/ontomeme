@@ -60,6 +60,13 @@
   Here: Tutorials. Simulate a brand-new user without touching yours:
   `XDG_CONFIG_HOME=<tmp>/config XDG_DATA_HOME=<tmp>/data` with
   `<tmp>/config/user-dirs.dirs` setting `XDG_DOCUMENTS_DIR`.
+- **Outside edits are never overwritten.** VaultStore remembers each note
+  file's SHA-256 when it loads or saves it; `save_note()` finding other bytes
+  on disk keeps them and writes the app's version as "<title> (conflict
+  copy)" (`last_conflict_copy`), and the editor opens that copy. So write
+  notes only through `save_note()` (`stamp = false` to keep a chosen
+  `modified`); a direct `ResourceSaver.save` leaves a stale hash and the next
+  edit becomes a spurious conflict copy.
 - **The VaultStore autoload opens the startup vault only if none is open.**
   Before that guard existed, its `_ready()` silently replaced a vault a test had
   opened in `_init`, so UI tests ran against the user's real vault.

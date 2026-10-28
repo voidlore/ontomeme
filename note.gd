@@ -451,6 +451,8 @@ func _commit_title() -> void:
 	_save_note_state()
 	current_note.title = new_title
 	VaultStore.save_note(current_note)
+	if _open_conflict_copy():
+		return
 	_refresh_note_list()
 	breadcrumb.text = _crumb(current_note)
 	_update_status("Renamed to " + _display_title(current_note))
@@ -469,9 +471,28 @@ func _do_auto_save() -> void:
 	_sync_raw_text()
 	VaultStore.save_note(current_note)
 	_editing = false
+	if _open_conflict_copy():
+		return
 	note_meta.text = _format_meta(current_note)
 	_refresh_note_list()
 	_update_status("Saved")
+
+
+## save_note() kept an outside edit and saved ours as a conflict copy: open
+## the copy so the user's words stay in front of them, and say what happened.
+func _open_conflict_copy() -> bool:
+	var copy: ContentLayer = VaultStore.last_conflict_copy
+	if copy == null:
+		return false
+	VaultStore.last_conflict_copy = null
+	var original: String = _display_title(current_note)
+	current_note = null
+	_refresh_note_list()
+	_open_note(copy)
+	if current_mode in ["structured", "visual"]:
+		_switch_layer(current_mode)
+	_update_status("\u201c%s\u201d changed on disk while you were editing. Your version is saved as \u201c%s\u201d." % [original, copy.title])
+	return true
 
 
 func _sync_raw_text() -> void:

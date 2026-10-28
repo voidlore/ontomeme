@@ -23,10 +23,14 @@ static func open(name: String, seed: bool = true) -> String:
 
 
 static func remove_tree(path: String) -> void:
-	if not DirAccess.dir_exists_absolute(path):
+	var dir := DirAccess.open(path)
+	if dir == null:
 		return
-	for d in DirAccess.get_directories_at(path):
+	# get_directories_at() skips hidden entries, which left .ontomeme/ and
+	# .trash/ behind between runs; list them too.
+	dir.include_hidden = true
+	for d in dir.get_directories():
 		remove_tree(path.path_join(d))
-	for f in DirAccess.get_files_at(path):
+	for f in dir.get_files():
 		DirAccess.remove_absolute(path.path_join(f))
 	DirAccess.remove_absolute(path)

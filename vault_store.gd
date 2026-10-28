@@ -2,7 +2,6 @@ class_name VaultStore
 extends Node
 
 const TresValidatorScript = preload("res://tres_validator.gd")
-const ConflictResolverScript = preload("res://conflict_resolver.gd")
 const StarterContent = preload("res://starter_content.gd")
 
 ## VaultStore — persistent note storage engine.
@@ -26,6 +25,14 @@ static var folders: Array[String] = []
 
 ## Last-seen modification time per note file, to spot outside edits.
 static var _mtimes: Dictionary = {}
+
+## SHA-256 of each note file as the app last read or wrote it. A save that
+## finds different bytes on disk would overwrite an outside edit.
+static var _hashes: Dictionary = {}
+
+## Set by save_note() when it kept an outside edit and wrote the in-memory
+## version as this new note instead; null otherwise.
+static var last_conflict_copy: ContentLayer = null
 
 const ASSET_DIRS: Array[String] = ["models"]
 
@@ -73,6 +80,7 @@ static func open_vault(path: String, remember: bool = true) -> void:
 	_create_vault()
 	_migrate_hidden_dir()
 	_mtimes.clear()
+	_hashes.clear()
 	note_list.clear()
 	if remember:
 		VaultRegistry.remember(vault_path)
@@ -102,8 +110,9 @@ static func _create_vault() -> void:
 		DirAccess.make_dir_recursive_absolute(vault_path)
 
 
-## Generate a unique filename (relative to the vault) for a new note.
-static func _unique_filename(title: String, folder: String = "") -> String:
+## File stem for a note title: "My Note!" → "note_my_note". Pure (no vault
+## state), so the MCP tools name files exactly the way the app does.
+static func filename_stem(title: String) -> String:
 	var base: String = title.replace(" ", "_").to_lower().strip_edges()
 	# Keep filenames portable: only letters, digits, _ and -
 	var clean: String = ""
@@ -112,6 +121,12 @@ static func _unique_filename(title: String, folder: String = "") -> String:
 	base = clean if clean != "" else "untitled"
 	if not base.begins_with("note_"):
 		base = "note_" + base
+	return base
+
+
+## Generate a unique filename (relative to the vault) for a new note.
+static func _unique_filename(title: String, folder: String = "") -> String:
+	var base: String = filename_stem(title)
 	var prefix: String = (folder.trim_suffix("/") + "/") if folder != "" else ""
 	var stem: String = base
 	var i: int = 1
@@ -230,6 +245,8 @@ static func _load_note_file(path: String, changed_on_disk: bool = false) -> Cont
 	if resource == null:
 		print("[VaultStore] Failed to load resource: ", path)
 		return null
+	if changed_on_disk or not _hashes.has(path):
+		_hashes[path] = FileAccess.get_sha256(path)
 	# Validate and auto-fix if needed
 	var result: Dictionary = TresValidatorScript.validate(path)
 	if result.valid:
@@ -265,31 +282,57 @@ static func create_note(title: String = "untitled", folder: String = "") -> Cont
 ## A note keeps the file it was loaded from / first saved to (resource_path);
 ## only brand-new notes get a fresh unique filename. (Previously every save
 ## generated a new unique name, so each save wrote another duplicate file.)
-static func save_note(note: ContentLayer) -> void:
+## `stamp` = false keeps note.modified as set (seeders use it to order notes).
+static func save_note(note: ContentLayer, stamp: bool = true) -> void:
 	if note == null:
 		return
 	var path: String = note.resource_path
 	if path.is_empty() or not path.begins_with(vault_path):
 		path = vault_path + _unique_filename(note.title)
-	# Pre-save conflict check against the note's real file
-	if FileAccess.file_exists(path):
-		var saved_hash: String = ConflictResolverScript.compute_hash(path)
-		var saved_mtime: int = FileAccess.get_modified_time(path)
-		var conflict_check: Dictionary = ConflictResolverScript.pre_save(vault_path, note, saved_hash, saved_mtime)
-		if conflict_check.conflict:
-			var resolution: Dictionary = ConflictResolverScript.resolve(note, vault_path, note.title, ConflictResolverScript.Strategy.AS_DUPLICATE)
-			print("[VaultStore] Conflict on ", path.get_file(), ": ", resolution.get("message", ""))
-			return
-	note.modified = Time.get_datetime_string_from_system()
+	last_conflict_copy = null
+	# The file changed since the app last read or wrote it (a sync tool,
+	# another editor, Claude): keep that version, save ours as a copy.
+	if FileAccess.file_exists(path) and _hashes.has(path) and FileAccess.get_sha256(path) != _hashes[path]:
+		_save_conflict_copy(note, path)
+		return
+	if stamp:
+		note.modified = Time.get_datetime_string_from_system()
 	var err := ResourceSaver.save(note, path)
 	if err == OK:
 		_mtimes[path] = FileAccess.get_modified_time(path)
+		_hashes[path] = FileAccess.get_sha256(path)
 		# Bind the note to its file so the next save overwrites it and
 		# ResourceLoader's cache hands back this same object on refresh.
 		note.take_over_path(path)
 		refresh_note_list()
 	else:
 		print("[VaultStore] Save failed (", err, "): ", path)
+
+
+## Write `note` (the app's version) as a new "<title> (conflict copy)" note
+## in the same folder, and reload the original from disk so it shows the
+## outside edit. Nothing on disk is overwritten.
+static func _save_conflict_copy(note: ContentLayer, path: String) -> void:
+	var copy: ContentLayer = note.duplicate()
+	var title: String = note.title + " (conflict copy)"
+	var n: int = 2
+	while get_note_index(title) >= 0:
+		title = "%s (conflict copy %d)" % [note.title, n]
+		n += 1
+	copy.title = title
+	copy.modified = Time.get_datetime_string_from_system()
+	var copy_path: String = vault_path + _unique_filename(title, folder_of(note))
+	if ResourceSaver.save(copy, copy_path) != OK:
+		push_error("Could not save a conflict copy of %s; the file on disk was left as it is" % path.get_file())
+		return
+	copy.take_over_path(copy_path)
+	_mtimes[copy_path] = FileAccess.get_modified_time(copy_path)
+	_hashes[copy_path] = FileAccess.get_sha256(copy_path)
+	_mtimes[path] = FileAccess.get_modified_time(path)
+	_load_note_file(path, true)   # updates `note` in place to the disk version
+	last_conflict_copy = copy
+	push_warning("%s changed on disk while open; kept it and saved the app's version as \"%s\"" % [path.get_file(), title])
+	refresh_note_list()
 
 
 ## Load a note by its index in the (sorted) note list.

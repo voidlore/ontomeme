@@ -53,6 +53,12 @@ func _init() -> void:
 	check(FileAccess.file_exists(fake_default.path_join("models/rocket.glb")), "sample rocket.glb is written")
 	check(not JourneyStore.topics().is_empty(), "the Learning Journey has a starter topic")
 
+	# Seeding goes through save_note, so editing a seeded note is not a conflict
+	var t1: ContentLayer = VaultStore.note_list[VaultStore.get_note_index("Tutorial 1: Writing Notes")]
+	t1.raw_text += "\nMy first edit."
+	VaultStore.save_note(t1)
+	check(VaultStore.last_conflict_copy == null, "editing a seeded tutorial right after first run is not a conflict")
+
 	# The app opens on the tutorials
 	var app: Control = load("res://note.tscn").instantiate()
 	get_root().add_child(app)

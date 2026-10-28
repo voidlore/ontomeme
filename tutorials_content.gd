@@ -801,7 +801,7 @@ static func seed_vault(journey: bool = true) -> void:
 		VaultStore.save_note(note)
 		# One second apart (timestamps are per-second) keeps the sidebar order
 		note.modified = Time.get_datetime_string_from_unix_time(now + 60 + i)
-		ResourceSaver.save(note, note.resource_path)
+		VaultStore.save_note(note, false)
 		print("seeded: ", title)
 
 	# File the series under a real "Tutorials" folder

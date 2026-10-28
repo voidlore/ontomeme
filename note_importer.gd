@@ -110,7 +110,7 @@ func _order_sidebar() -> void:
 	for i in range(n):
 		var note: ContentLayer = _imported[i]
 		note.modified = Time.get_datetime_string_from_unix_time(now + (n - i))
-		ResourceSaver.save(note, note.resource_path)
+		VaultStore.save_note(note, false)
 
 
 func _define_objectives(topic: String, objectives: Array) -> void:
