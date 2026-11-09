@@ -185,6 +185,12 @@ void fragment() {
 """
 
 static var _shader_cache: Dictionary = {}
+## False while another app is in front: every card stops animating and
+## rendering until the app is back. Static, so a card built while the app is
+## in the background (the disk watcher re-renders Read view) starts paused.
+static var app_focused: bool = true
+static var _minimized: bool = false
+static var _minimized_checked_ms: int = -1000
 
 var params: Dictionary = {}
 var expanded: bool = false
@@ -214,6 +220,7 @@ var _hover_obj: int = -1
 var _fit_radius: float = 1.0
 var _fit_height: float = 1.0
 var _user_zoomed: bool = false
+var _sky_material: Material = null   # kept while the card is out of the tree
 
 
 func _init(p: Dictionary = {}, height: float = 340.0, is_expanded: bool = false) -> void:
@@ -761,19 +768,18 @@ func _build_graph() -> void:
 	var accent: Color = _color("color", Color("d97757"))
 	var base_col: Color = _color("color2", Color("8fa2ff"))
 	var notes: Array = VaultStore.note_list
-	var index_of: Dictionary = {}
+	var titles: Dictionary = WikiLinks.title_index()
+	var index_of: Dictionary = {}   # ContentLayer -> its position in notes
 	for i in range(notes.size()):
-		index_of[notes[i].title.strip_edges().to_lower()] = i
-	var re := RegEx.new()
-	re.compile("\\[\\[([^\\]|]+)(?:\\|[^\\]]+)?\\]\\]")
+		index_of[notes[i]] = i
 	var edges: Array[Vector2i] = []
 	var degree: Array[int] = []
 	degree.resize(notes.size())
 	degree.fill(0)
 	for i in range(notes.size()):
-		for m in re.search_all(notes[i].raw_text):
-			var j: int = index_of.get(m.get_string(1).strip_edges().to_lower(), -1)
-			if j >= 0 and j != i and not edges.has(Vector2i(j, i)) and not edges.has(Vector2i(i, j)):
+		for target in WikiLinks.outgoing(notes[i], titles):
+			var j: int = index_of[target]
+			if not edges.has(Vector2i(j, i)) and not edges.has(Vector2i(i, j)):
 				edges.append(Vector2i(i, j))
 				degree[i] += 1
 				degree[j] += 1
@@ -862,9 +868,13 @@ func _update_camera() -> void:
 func _process(delta: float) -> void:
 	if _viewport == null:
 		return
-	# Only render while the card is actually on screen
-	var shown: bool = is_visible_in_tree() and _on_screen()
-	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if shown else SubViewport.UPDATE_DISABLED
+	# Only animate and render while the card is on screen and the app is in
+	# front. The project runs in low-processor mode, so a paused card lets
+	# the window stop redrawing altogether.
+	var shown: bool = app_focused and is_visible_in_tree() and _on_screen() and not _window_minimized()
+	var update: SubViewport.UpdateMode = SubViewport.UPDATE_ALWAYS if shown else SubViewport.UPDATE_DISABLED
+	if _viewport.render_target_update_mode != update:
+		_viewport.render_target_update_mode = update
 	if not shown:
 		return
 	_time += delta
@@ -874,6 +884,47 @@ func _process(delta: float) -> void:
 		_update_camera()
 	for u in _updaters:
 		u.call(delta)
+
+
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_FOCUS_OUT:
+			app_focused = false
+		NOTIFICATION_APPLICATION_FOCUS_IN:
+			app_focused = true
+		NOTIFICATION_EXIT_TREE:
+			_release_sky()
+		NOTIFICATION_ENTER_TREE:
+			_restore_sky()
+
+
+## The Compatibility (OpenGL) renderer leaks a Sky's two radiance textures
+## (256² with mipmaps, "Texture with GL ID … leaked" at exit) when the Sky is
+## freed after its card left the tree, which is what a Read view re-render
+## does: remove the old cards, queue_free them, build the new ones. So the
+## card frees its Sky as it leaves the tree, and builds a new one with the
+## same material if it comes back.
+func _release_sky() -> void:
+	if _env != null and _env.sky != null:
+		_sky_material = _env.sky.sky_material
+		_env.sky = null
+
+
+func _restore_sky() -> void:
+	if _env != null and _env.sky == null and _sky_material != null:
+		var sky := Sky.new()
+		sky.sky_material = _sky_material
+		_env.sky = sky
+
+
+## Asking the window manager costs a round trip, so all cards share one
+## answer, refreshed every quarter second.
+func _window_minimized() -> bool:
+	var now: int = Time.get_ticks_msec()
+	if now - _minimized_checked_ms > 250:
+		_minimized_checked_ms = now
+		_minimized = get_window().mode == Window.MODE_MINIMIZED
+	return _minimized
 
 
 func _on_screen() -> bool:
@@ -1405,12 +1456,13 @@ func _report_score(kind: String, index: int, score: int, total: int) -> void:
 	if note_title == "":
 		return
 	var key: String = JourneyStore.activity_key(note_title, kind, index)
-	var logged: int = JourneyStore.log_score(key, score, total, str(params.get("objective", "")))
+	var objective: String = str(params.get("objective", ""))
+	var logged: int = JourneyStore.log_score(key, score, total, objective)
 	var n: Node = self
 	while n != null and not n.has_method("on_activity_score"):
 		n = n.get_parent()
 	if n != null:
-		n.on_activity_score(key, score, total, logged)
+		n.on_activity_score(key, score, total, logged, objective)
 
 
 func _notify_progress() -> void:
@@ -1811,14 +1863,22 @@ static func _shape_material(c: Color) -> StandardMaterial3D:
 	return m
 
 
-## Path of a model: bare names live in the vault's models/ folder.
+## Path of a model: bare names and subpaths ("rocket/rocket.gltf") live in
+## the vault's models/ folder; "~/" is the home folder.
 static func model_path(file: String) -> String:
 	var f: String = file.strip_edges()
 	if f.begins_with("~/"):
-		return OS.get_environment("HOME").path_join(f.substr(2))
+		var home: String = home_dir()
+		return home.path_join(f.substr(2)) if home != "" else f
 	if f.is_absolute_path():
 		return f
 	return VaultStore.vault_path.path_join("models").path_join(f)
+
+
+## The user's home folder: HOME, else USERPROFILE (Windows doesn't set HOME).
+static func home_dir() -> String:
+	var home: String = OS.get_environment("HOME")
+	return home if home != "" else OS.get_environment("USERPROFILE")
 
 
 static func load_model(file: String) -> Node3D:

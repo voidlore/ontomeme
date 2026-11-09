@@ -4,3 +4,4 @@
 # Godot export output
 /build/
 *.tmp
+/dist/

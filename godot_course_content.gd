@@ -202,7 +202,8 @@ learn: Containers and Layout
 
 
 ## Write the course into the open vault, in `folder`. Idempotent: rewrites
-## notes with the same titles.
+## the notes with the same titles in `folder`. A same-titled note anywhere
+## else (a user's own "Signals") is left alone.
 static func seed_vault(folder: String = "Godot") -> void:
 	VaultStore.refresh_note_list()
 	# The sidebar lists newest first: stamp a second apart, first lesson newest
@@ -210,11 +211,10 @@ static func seed_vault(folder: String = "Godot") -> void:
 	var titles: Array = NOTES.keys()
 	for i in range(titles.size()):
 		var title: String = titles[i]
-		var idx: int = VaultStore.get_note_index(title)
-		var note: ContentLayer = VaultStore.note_list[idx] if idx >= 0 else VaultStore.create_note(title, folder)
+		var note: ContentLayer = VaultStore.find_note(title, folder)
+		if note == null:
+			note = VaultStore.create_note(title, folder)
 		note.raw_text = NOTES[title]
 		note.tags.assign(["quiz"] if title.begins_with("Quiz") else ["godot", "course"])
 		note.modified = Time.get_datetime_string_from_unix_time(now + titles.size() - i)
 		VaultStore.save_note(note, false)
-		if idx >= 0 and folder != "" and VaultStore.folder_of(note) != folder:
-			VaultStore.move_note(note, folder)

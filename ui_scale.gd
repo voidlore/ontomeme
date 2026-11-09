@@ -2,16 +2,19 @@ extends RefCounted
 ## Interface scale: the screen's own scale (2× on a Retina Mac, 1.25×/1.5× on
 ## a Windows laptop) times the user's zoom (Ctrl+= / Ctrl+- / Ctrl+0). Without
 ## it the app draws at 1× and looks tiny on high-resolution screens.
-## The zoom is remembered per computer in user://display.json.
+## The zoom is remembered per computer in user://display.json, beside the
+## theme: "dark", "light" or "system" (follow the OS).
 
 const ZOOM_STEPS: Array[float] = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0]
 const BASE_MIN_SIZE := Vector2i(820, 520)
 const BASE_SIZE := Vector2i(1280, 720)
+const THEMES: Array[String] = ["dark", "light", "system"]
 
 ## Tests point this at a throwaway file so they never touch the real setting.
 static var file_override: String = ""
 
 static var zoom: float = 1.0
+static var theme: String = "dark"
 static var _loaded: bool = false
 
 
@@ -32,23 +35,66 @@ static func screen_scale(screen: int = -1) -> float:
 	return clampf(snappedf(s, 0.25), 1.0, 4.0)
 
 
+## display.json as a Dictionary ({} when missing or unreadable).
+static func _read() -> Dictionary:
+	if not FileAccess.file_exists(_file()):
+		return {}
+	var v: Variant = JSON.parse_string(FileAccess.get_file_as_string(_file()))
+	return v if v is Dictionary else {}
+
+
+static func _load() -> void:
+	if _loaded:
+		return
+	_loaded = true
+	var v: Dictionary = _read()
+	zoom = 1.0
+	if v.get("zoom") is float or v.get("zoom") is int:
+		zoom = clampf(float(v.zoom), ZOOM_STEPS[0], ZOOM_STEPS[-1])
+	theme = str(v.get("theme", "dark"))
+	if theme not in THEMES:
+		theme = "dark"
+
+
+## Write both settings, keeping any other keys already in the file.
+static func _save() -> void:
+	var v: Dictionary = _read()
+	v["zoom"] = zoom
+	v["theme"] = theme
+	var f := FileAccess.open(_file(), FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(v))
+
+
 static func load_zoom() -> float:
-	if not _loaded:
-		_loaded = true
-		zoom = 1.0
-		if FileAccess.file_exists(_file()):
-			var v: Variant = JSON.parse_string(FileAccess.get_file_as_string(_file()))
-			if v is Dictionary and (v.get("zoom") is float or v.get("zoom") is int):
-				zoom = clampf(float(v.zoom), ZOOM_STEPS[0], ZOOM_STEPS[-1])
+	_load()
 	return zoom
 
 
 static func set_zoom(z: float) -> void:
+	_load()
 	zoom = clampf(z, ZOOM_STEPS[0], ZOOM_STEPS[-1])
-	_loaded = true
-	var f := FileAccess.open(_file(), FileAccess.WRITE)
-	if f != null:
-		f.store_string(JSON.stringify({"zoom": zoom}))
+	_save()
+
+
+## The saved theme choice: "dark" (the default), "light" or "system".
+static func load_theme() -> String:
+	_load()
+	return theme
+
+
+static func set_theme(choice: String) -> void:
+	_load()
+	theme = choice if choice in THEMES else "dark"
+	_save()
+
+
+## Whether a theme choice means a dark window. "system" asks the OS, and is
+## dark where the OS can't say (headless, or no dark-mode support).
+static func is_dark(choice: String) -> bool:
+	if choice == "system":
+		return DisplayServer.is_dark_mode() if DisplayServer.is_dark_mode_supported() else true
+	return choice != "light"
 
 
 ## The next zoom step up (dir = 1) or down (dir = -1) from the current one.

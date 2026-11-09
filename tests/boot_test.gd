@@ -63,11 +63,36 @@ func _init() -> void:
 	await frames(6)
 	check(app.current_note != null and app.current_note.title == "Tutorial 1: Writing Notes", "a note opens")
 	check(app.visual_layer.get_child_count() > 0, "Read view renders the note (%d nodes)" % app.visual_layer.get_child_count())
+
+	# A hand-edited journey.json with broken entries: sanitized on load, the tab builds over it
+	var f := FileAccess.open(JourneyStore.file_override, FileAccess.WRITE)
+	f.store_string(JSON.stringify({"topics": [
+		{"id": "t1", "name": "Colour", "objectives": [
+			{"id": "o1", "name": "Mix colours", "goal": "expert", "demos": [{"output": "percent"}],
+				"log": [{"activity": "Tutorial 1: Writing Notes#quiz0", "score": "ten", "max": 3, "value": 1}]},
+			{"name": "No id", "demos": [{"activity": "Tutorial 1: Writing Notes#quiz0"}]}]},
+		{"id": "t2"}, 7]}))
+	f.close()
+	JourneyStore.invalidate()
+	app._switch_layer("journey")
+	await frames(3)
+	var jp: JourneyPanel = app.journey_panel
+	var tree_ok: bool = jp.tree.get_root().get_child_count() == 1 and jp.tree.get_root().get_child(0).get_child_count() == 2
+	var built: int = 0
+	for o in JourneyStore.find_topic("t1").objectives:
+		jp.select("objective", o.id)
+		await frames(2)
+		built += 1 if jp.find_child("GoalOption", true, false) != null else 0
+	check(tree_ok and built == 2, "the Journey tab builds over a journey.json with broken entries (1 topic, 2 objectives, both editors)")
+	check(jp.find_child("JourneyFileWarning", true, false) != null, "and says the file had broken entries")
 	app.queue_free()
 	await frames(2)
 
-	for f in [JourneyStore.file_override, ProgressStore.file_override]:
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
+	for fname in DirAccess.get_files_at("user://"):
+		if fname.match("test_journey_boot.unreadable-*.json"):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path("user://" + fname))
+	for p in [JourneyStore.file_override, ProgressStore.file_override]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	JourneyStore.file_override = ""
 	ProgressStore.file_override = ""
 	print("RESULT: %s (%d failures)" % ["ALL PASS" if fails == 0 else "FAILED", fails])

@@ -2,6 +2,8 @@ extends SceneTree
 ## UI click test: pushes real InputEventMouseButton events through the
 ## viewport, so GUI hit-testing / mouse_filter blocking is exercised.
 
+const UiScale = preload("res://ui_scale.gd")
+
 var app: Control
 var fails: int = 0
 
@@ -26,12 +28,83 @@ func click(c: Control) -> void:
 	await process_frame
 	await process_frame
 
+## A note file written by another program (sync, git, Claude via MCP).
+func outside_note(vault: String, title: String, modified: String) -> void:
+	var note := ContentLayer.new()
+	note.title = title
+	note.raw_text = "Written elsewhere."
+	note.created = modified
+	note.modified = modified
+	ResourceSaver.save(note, vault.path_join(title.to_lower() + ".tres"))
+
+
+func note_titled(title: String) -> ContentLayer:
+	var idx: int = VaultStore.get_note_index(title)
+	return VaultStore.note_list[idx] if idx >= 0 else null
+
+
+## A palette row and a graph node keep naming the note they showed after an
+## outside edit re-sorts VaultStore.note_list under them, instead of whatever
+## note then sits at the old index.
+func stale_index_checks(vault: String) -> void:
+	var alpha: ContentLayer = note_titled("Alpha")
+	var beta: ContentLayer = note_titled("Beta")
+	alpha.modified = "2026-01-01T10:00:00"   # a known order: Beta, then Alpha
+	VaultStore.save_note(alpha, false)
+	beta.modified = "2026-01-01T11:00:00"
+	VaultStore.save_note(beta, false)
+	app.check_disk_changes()
+	app._open_note(note_titled("Alpha"))
+	app._open_palette()
+	app._palette_search.text = "Beta"
+	app._on_palette_search_changed("Beta")
+	await process_frame
+	# The palette lists notes through the sidebar's search, title and body:
+	# Alpha's body links to [[Beta]], so it is listed too, after the title hit.
+	check(app._palette_items.size() >= 1 and str(app._palette_items[0].label).ends_with("Beta"),
+		"palette filtered to 'Beta' shows Beta's row first (%s)" % [app._palette_items.map(func(i: Dictionary) -> String: return str(i.label))])
+	var before: int = VaultStore.get_note_index("Beta")
+	await create_timer(1.1).timeout   # mtime is per second
+	outside_note(vault, "Cedar", "2026-02-01T09:00:00")
+	app.check_disk_changes()
+	await process_frame
+	check(VaultStore.get_note_index("Beta") != before, "(Cedar, written outside, sorts first: Beta moved from index %d to %d)" % [before, VaultStore.get_note_index("Beta")])
+	app._run_selected_palette_item()
+	await process_frame
+	check(app.current_note != null and app.current_note.title == "Beta", "Enter on the palette's Beta row still opens Beta (%s)" % (app.current_note.title if app.current_note else "none"))
+	app._open_palette()
+	app._on_palette_search_changed("Cedar")
+	await process_frame
+	DirAccess.remove_absolute(vault.path_join("cedar.tres"))   # deleted outside
+	app.check_disk_changes()
+	app._run_selected_palette_item()
+	await process_frame
+	check(app.current_note != null and app.current_note.title == "Beta" and note_titled("Cedar") == null, "a row whose file was deleted outside opens nothing (%s)" % (app.current_note.title if app.current_note else "none"))
+
+	app._open_note(note_titled("Alpha"))
+	app._build_graph_data()
+	var key: String = note_titled("Beta").resource_path
+	check(app._graph_nodes.has(key) and app._graph_nodes[key].title == "Beta", "the graph keys Beta's node by its file")
+	before = VaultStore.get_note_index("Beta")
+	await create_timer(1.1).timeout
+	outside_note(vault, "Dogwood", "2026-03-01T09:00:00")
+	app.check_disk_changes()
+	app._build_graph_data()
+	check(VaultStore.get_note_index("Beta") != before, "(Dogwood sorts first: Beta moved from index %d to %d)" % [before, VaultStore.get_note_index("Beta")])
+	app._on_graph_node_clicked(key)
+	await process_frame
+	check(app.current_note != null and app.current_note.title == "Beta", "Beta's graph node still opens Beta (%s)" % (app.current_note.title if app.current_note else "none"))
+
+
 func _init() -> void:
+	preload("res://tests/test_vault.gd").hold()   # before any await, or the autoload opens the real vault
 	JourneyStore.file_override = "user://test_journey_ui.json"   # never touch the real journey
 	JourneyStore.reset()
+	UiScale.file_override = "user://test_display_ui.json"   # the theme click must not change the real setting
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(UiScale.file_override))
 	var vault := "user://ui-test-vault/"
 	var abs := ProjectSettings.globalize_path(vault)
-	OS.execute("rm", ["-rf", abs])
+	preload("res://tests/test_vault.gd").remove_tree(abs)   # in-process, not rm: the test needs nothing on PATH
 	DirAccess.make_dir_recursive_absolute(abs)
 	await process_frame
 	VaultStore.open_vault(abs, false)
@@ -59,13 +132,13 @@ func _init() -> void:
 	await click(app.get_node("%BtnVisual"))
 	check(app.visual_layer.visible and app.doc_scroll.visible and not app.graph_layer.visible, "click Read -> reading view")
 	check(app.visual_layer.get_child_count() > 0, "reading view rendered content (%d rows)" % app.visual_layer.get_child_count())
-	var link: RichTextLabel = null
+	var link: RichTextLabel = null   # the body's "See [[Beta]]." (a LINKED FROM row follows it)
 	for c in app.visual_layer.get_children():
-		if c is RichTextLabel:
+		if c is RichTextLabel and link == null:
 			link = c
-	check(link != null and link.text.contains("[url=Beta]"), "Read view renders [[Beta]] as a link")
+	check(link != null and LayerEngine.link_targets(link) == ["Beta"] and link.text.contains("[url=0]"), "Read view renders [[Beta]] as a link")
 	if link != null:
-		link.meta_clicked.emit("Beta")
+		link.meta_clicked.emit("0")   # the url meta is the link's index in the row
 		await process_frame
 	check(app.current_note != null and app.current_note.title == "Beta", "clicking a wikilink opens that note")
 	await click(app.get_node("%BtnStructured"))
@@ -106,6 +179,7 @@ func _init() -> void:
 	get_root().push_input(key)
 	await process_frame
 	check(app.current_mode == "graph" and not app._palette_visible, "Enter in palette runs 'Graph view'")
+	await test_connect_claude(abs)
 
 	# Editing + autosave writes the same file
 	await click(app.get_node("%BtnRaw"))
@@ -168,6 +242,83 @@ func _init() -> void:
 	await click(app.get_node("%DeleteButton"))
 	check(VaultStore.note_list.size() == 2, "click Delete -> note removed")
 
+	await stale_index_checks(abs)
+
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(UiScale.file_override))
+	UiScale.file_override = ""
 	print("RESULT: %s (%d failures)" % ["ALL PASS" if fails == 0 else "FAILED", fails])
-	OS.execute("rm", ["-rf", abs])
+	preload("res://tests/test_vault.gd").remove_tree(abs)
 	quit(1 if fails else 0)
+
+
+# ── Palette → "Connect Claude Desktop…" ─────────────────────────────────────
+
+## Type in the palette, click the row, read the dialog, click Copy and Close:
+## every step a real input event.
+func test_connect_claude(vault: String) -> void:
+	const DesktopConfig = preload("res://mcp/desktop_config.gd")
+	await click(app.get_node("%PaletteButton"))
+	await type_text("claude desktop")
+	check(app._palette_items.size() == 1 and app._palette_items[0].action == "connect_claude", "typing 'claude desktop' leaves one palette row: Connect Claude Desktop…")
+	var list: ItemList = app._palette_list
+	await click_at(list.get_global_transform() * list.get_item_rect(0).get_center())
+	await process_frame
+	var dlg: AcceptDialog = app.get_node_or_null(DesktopConfig.DIALOG_NAME)
+	check(not app._palette_visible and dlg != null and dlg.visible, "clicking the row closes the palette and opens the Connect Claude Desktop dialog")
+	if dlg == null:
+		return
+	var want: String = DesktopConfig.for_this_app(VaultStore.vault_path)
+	check(dialog_text(dlg).contains(want), "the dialog shows the config snippet for this install")
+	var entry: Dictionary = JSON.parse_string(want).mcpServers.ontomeme
+	check(entry.command == OS.get_executable_path() and ("--vault=" + vault.trim_suffix("/")) in entry.args, "…which starts this executable on the open vault (%s)" % [entry.args])
+	var content: Control = dlg.get_node("Content")
+	check(content.get_combined_minimum_size().x <= 820 and dlg.get_contents_minimum_size().x <= 820 and Rect2(Vector2(), Vector2(get_root().size)).encloses(Rect2(dlg.position, dlg.size)),
+			"the dialog fits the 820x520 window (content %d wide, dialog %s at %s)" % [content.get_combined_minimum_size().x, dlg.size, dlg.position])
+	var copy: Button = null
+	for b in dlg.get_ok_button().get_parent().get_children():
+		if b is Button and b.text == "Copy":
+			copy = b
+	check(copy != null, "the dialog has a Copy button")
+	if copy != null:
+		await click_at(Vector2(dlg.position) + copy.get_global_rect().get_center())
+		check(copy.text == "Copied", "clicking Copy copies the snippet (the button says Copied)")
+	await click_at(Vector2(dlg.position) + dlg.get_ok_button().get_global_rect().get_center())
+	await process_frame
+	check(not is_instance_valid(dlg), "Close closes and frees the dialog")
+
+
+func click_at(pos: Vector2) -> void:
+	var m := InputEventMouseMotion.new()
+	m.position = pos
+	m.global_position = pos
+	get_root().push_input(m)
+	for pressed in [true, false]:
+		var e := InputEventMouseButton.new()
+		e.button_index = MOUSE_BUTTON_LEFT
+		e.pressed = pressed
+		e.position = pos
+		e.global_position = pos
+		get_root().push_input(e)
+	await process_frame
+	await process_frame
+
+
+## Key presses with their characters, into whatever has focus.
+func type_text(text: String) -> void:
+	for i in text.length():
+		for pressed in [true, false]:
+			var k := InputEventKey.new()
+			k.unicode = text.unicode_at(i)
+			k.keycode = OS.find_keycode_from_string(text[i].to_upper()) if text[i] != " " else KEY_SPACE
+			k.pressed = pressed
+			get_root().push_input(k)
+	await process_frame
+
+
+## Every text the dialog shows: its own text, labels and text boxes.
+func dialog_text(dlg: AcceptDialog) -> String:
+	var out: String = dlg.dialog_text
+	for n in dlg.find_children("*", "", true, false):
+		if n is Label or n is TextEdit:
+			out += "\n" + n.text
+	return out

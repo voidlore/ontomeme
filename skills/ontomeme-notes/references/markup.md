@@ -8,22 +8,63 @@ wins. Fix this file.
 
 | Write | Renders |
 |---|---|
-| `# Title` / `## Section` / `### Small` | H1 / H2 / H3 (a space after the `#`s is required) |
-| `- item` or `* item` | bullet (one level, no nesting) |
+| `# Title` / `## Section` / `### Small` | H1 / H2 / H3 (a space after the `#`s is required). `####` to `######` look like `###` |
+| `- item` or `* item` | bullet. Indent 2 or 4 spaces per level to nest |
+| `1. item` or `1) item` | numbered item, the number shown as typed (no renumbering). Nests like bullets |
+| `- [ ] to do` / `- [x] done` | task item with a checkbox (read-only: edit the `[ ]` to tick it) |
+| `> quoted text` | quote panel with an accent bar. Consecutive `>` lines make one quote |
+| `---`, `***` or `___` alone on a line | horizontal rule |
 | `**bold**`, `*italic*`, `` `code` `` | inline emphasis. Code spans stay literal |
 | `[[Note Title]]` | accent link. Click opens the note, or creates it if missing |
 | `[[Note Title|shown text]]` | link with custom text |
+| `[[Note Title#Heading]]` | link to Note Title, shown as written (it opens the note at the top) |
+| a pipe table (example below) | table with a bold header row. A table wider than the page scrolls sideways (Shift+wheel) |
+| `[text](https://…)` or a bare `https://…` | web link, opens in the browser. `mailto:` works too. Any other target (`[text](notes.md)`, `javascript:`, `file:`) stays as typed: link notes with `[[ ]]` |
+| `![alt](images/file.png)` on a line of its own | the image, fitted to the page width and at most 480 px high (never enlarged), with `alt` as a caption. Bare `file.png` means `images/file.png` |
 | ```` ```lang ```` … ```` ``` ```` | code block (any `lang` except `3d` / `scene3d`) |
 | ```` ```` ```` … ```` ```` ```` | literal block that can contain ```` ``` ```` lines |
 | empty line | paragraph break |
 
+A link matches a note's title exactly, ignoring case: `[[Art]]` never opens
+"Start Here: Art". A `[[link]]` inside a code span or a fenced block is only
+text: it is not a link and not a graph edge. A link to a missing
+`Note#Heading` creates "Note". Read view ends with **LINKED FROM (N)**: the
+notes whose links point to this one, each with its folder (hidden when none).
+
 A link shows ✓ if every quiz in the target passed, or ● if the reader missed a
-question that points there. Not supported: tables, images, numbered-list
-renumbering (write `1.` yourself, it shows as typed), nested lists, HTML.
+question that points there. Not supported: numbered-list renumbering
+(write the numbers yourself, they show as typed), HTML.
+
+Tables: a header row, a rule row of dashes, then one line per row, every line
+starting with a pipe. Colons in the rule row align a column (`:--` left,
+`:-:` centre, `--:` right). Cells take links and emphasis; write `\|` for a
+pipe inside a cell (a `[[Note|shown text]]` link needs no escape). A row with
+fewer cells than the header is padded, extra cells are dropped.
+
+```
+| Shape    | Sides | Read more      |
+|:---------|:-----:|---------------:|
+| Triangle |   3   | [[Triangles]]  |
+| Square   |   4   | [[Squares]]    |
+```
+
+Images: put the files in `<vault>/images/` (png, jpg/jpeg or webp) and
+reference them by a path inside the vault. Only a line that is exactly one
+image shows it; an image inside a sentence or a code block stays text. Web
+URLs, `data:` URIs, absolute paths and paths leaving the vault are not
+loaded: the line says why instead. Edit view always shows the Markdown text.
+In the app, drop a png, jpg or webp file on the window or use "Insert image…"
+in the palette (Ctrl+P): the file is copied into `images/` (an identical file
+already there is reused) and the line goes in at the cursor.
 
 Views: Edit (Ctrl+1, raw text), Outline (Ctrl+2), Read (Ctrl+3),
-Graph (Ctrl+4), Journey (Ctrl+5). Ctrl+P opens the command palette, which can
-insert block templates and import models.
+Graph (Ctrl+4), Journey (Ctrl+5). In Outline, click a heading to edit the note
+at that line, or Shift+click it to read from there. Ctrl+P opens the command
+palette, which can insert block templates and import models. Ctrl+Shift+E goes
+to the note list: Up/Down move, Enter opens, Right/Left expand or fold a
+folder, F2 renames, Delete (Backspace on a Mac) asks, then deletes, Shift+F10
+opens the row's menu, Esc returns to the note. Down in the search box jumps to
+the results.
 
 ## 3D blocks
 
@@ -124,6 +165,9 @@ Also in `.ontomeme/`: `progress.json` (quiz answers and passes for ✓/●) and
 `ui.json` (collapsed folders). Don't edit these by hand while the app runs.
 
 ## Front matter (import_notes.gd only. Stripped, never stored in the note)
+
+A note that still opens with a front matter block (one written over MCP, say)
+shows it in Read view as a muted key / value box, and Outline skips it.
 
 ```
 ---

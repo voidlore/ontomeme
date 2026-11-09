@@ -24,7 +24,9 @@ extends SceneTree
 ## All front matter is read before any note is imported, so objectives
 ## defined in a hub note are found by lessons that sort before it.
 ## Files whose name starts with "_" are skipped (use them for drafts).
-## Also copies <src_dir>/models/* into the vault's models/ folder.
+## Also copies <src_dir>/models/* into the vault's models/ folder, and the
+## png, jpg and webp files under <src_dir>/images/ into its images/ folder
+## (`![alt](images/x.png)` lines then show). Neither folder is read for notes.
 ## Prints one line per note; exit code 1 if nothing was imported.
 
 const NoteImporter = preload("res://note_importer.gd")

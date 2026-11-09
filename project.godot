@@ -4,7 +4,10 @@ config/name="Ontomeme"
 config/version="0.1.0"
 config/description="Ontomeme — immersive notes, folders and a learning journey, built on Godot"
 config/icon="res://Ontomeme_Logo.png"
-run/main_scene="res://note.tscn"
+run/main_scene="res://boot.tscn"
+run/print_header=false
+run/flush_stdout_on_print=true
+run/low_processor_mode=true
 config/features=PackedStringArray("4.2", "Forward Plus")
 
 [autoload]
@@ -37,4 +40,5 @@ new_note={
 
 [rendering]
 
+rendering_device/fallback_to_opengl3=true
 textures/vram_compression/import_etc2_astc=true

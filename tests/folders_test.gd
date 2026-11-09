@@ -3,6 +3,8 @@ extends SceneTree
 ##   headless:  godot --headless --path . -s res://tests/folders_test.gd
 ##   + images:  godot --path . -s res://tests/folders_test.gd -- <out_dir>
 
+const TestVault = preload("res://tests/test_vault.gd")
+
 var fails: int = 0
 var out: String = ""
 var app: Control
@@ -57,6 +59,7 @@ func write_note_file(path: String, title: String, text: String) -> void:
 	ResourceSaver.save(n, path)
 
 func _init() -> void:
+	TestVault.hold()   # before any await, or the autoload opens the real vault
 	var args := OS.get_cmdline_user_args()
 	out = args[0] if args.size() > 0 else ""
 	DisplayServer.window_set_size(Vector2i(1280, 820))
@@ -65,7 +68,7 @@ func _init() -> void:
 	V = ProjectSettings.globalize_path("user://folders-test-vault/")
 	V2 = ProjectSettings.globalize_path("user://folders-test-vault-2/")
 	for d in [V, V2]:
-		OS.execute("rm", ["-rf", d])
+		TestVault.remove_tree(d)
 		DirAccess.make_dir_recursive_absolute(d)
 	await frames(2)
 	VaultStore.open_vault(V, false)
@@ -156,15 +159,18 @@ func _init() -> void:
 	app.check_disk_changes()
 	await frames(3)
 	check(app.current_note.raw_text.contains("nucleus") and app.raw_text_layer.text.contains("nucleus"), "an outside edit to the open note shows up")
-	OS.execute("mv", [V + "Chemistry", V + "Chem"])
+	DirAccess.rename_absolute(V + "Chemistry", V + "Chem")   # in-process, not mv or rm: the test needs nothing on PATH
 	app.check_disk_changes()
 	await frames(3)
 	check(app._folder_buttons.has("Chem") and not app._folder_buttons.has("Chemistry") and app.current_note != null and app.current_note.title == "Atoms", "folder renamed outside: sidebar follows, note stays open")
-	OS.execute("rm", ["-rf", V + "Chem"])
+	TestVault.remove_tree(V + "Chem")
 	app.check_disk_changes()
 	await frames(3)
 	check(note("Atoms") == null and app.current_note != null and app.current_note.title != "Atoms", "folder deleted outside: its notes go, another note opens")
 
+	# With no trash helper on PATH (gio, kioclient or mv) the engine logs this,
+	# and delete_folder falls back to deleting the folder outright.
+	print("EXPECT-ERROR: move_to_trash: Could not move the resource \"%s\"" % (V + "Waves"))
 	app.delete_folder("Waves")
 	await frames(2)
 	check(not DirAccess.dir_exists_absolute(V + "Waves") and note("Wave Basics") == null, "delete folder moves it (and its notes) to the trash")
@@ -192,7 +198,7 @@ func _init() -> void:
 	else:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(VaultRegistry.FILE))
 	for d in [V, V2]:
-		OS.execute("rm", ["-rf", d])
+		TestVault.remove_tree(d)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(JourneyStore.file_override))
 	print("RESULT: %s (%d failures)" % ["ALL PASS" if fails == 0 else "FAILED", fails])
 	quit(1 if fails else 0)

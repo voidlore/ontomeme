@@ -1,7 +1,9 @@
 extends RefCounted
 ## The beginner tutorial series (+ a sample rocket.glb), written into a vault
 ## on first run (starter_content.gd) and by tests/seed_tutorials.gd.
-## Idempotent: re-running rewrites the tutorial notes and the model.
+## Idempotent: re-running rewrites the tutorial notes in the Tutorials folder.
+## A same-titled note elsewhere and an existing models/rocket.glb are the
+## user's and are never touched.
 
 const T1: String = "Tutorial 1: Writing Notes"
 const T2: String = "Tutorial 2: Linking Notes"
@@ -775,18 +777,7 @@ static func _bake(p: PrimitiveMesh) -> ArrayMesh:
 ## Write the tutorials, the sample model and (if `journey` and it is empty) the
 ## starter Learning Journey into the open vault.
 static func seed_vault(journey: bool = true) -> void:
-	# Sample model
-	var models_dir: String = VaultStore.vault_path.path_join("models")
-	DirAccess.make_dir_recursive_absolute(models_dir)
-	var rocket := _build_rocket()
-	var doc := GLTFDocument.new()
-	var state := GLTFState.new()
-	var err: int = doc.append_from_scene(rocket, state)
-	if err == OK:
-		err = doc.write_to_filesystem(state, models_dir.path_join("rocket.glb"))
-	print("rocket.glb: ", "ok" if err == OK else "error %d" % err)
-	rocket.free()
-
+	_write_rocket()
 	VaultStore.refresh_note_list()
 	# Write in reverse so "Start Here" is the most recent (top of the sidebar)
 	var order: Array = NOTES.duplicate()
@@ -794,8 +785,10 @@ static func seed_vault(journey: bool = true) -> void:
 	var now: int = Time.get_unix_time_from_datetime_string(Time.get_datetime_string_from_system())
 	for i in range(order.size()):
 		var title: String = order[i][0]
-		var idx: int = VaultStore.get_note_index(title)
-		var note: ContentLayer = VaultStore.note_list[idx] if idx >= 0 else VaultStore.create_note(title)
+		# Only the series' own copy, filed under a real "Tutorials" folder
+		var note: ContentLayer = VaultStore.find_note(title, FOLDER)
+		if note == null:
+			note = VaultStore.create_note(title, FOLDER)
 		note.raw_text = order[i][1]
 		note.tags.assign(["tutorial"])
 		VaultStore.save_note(note)
@@ -803,22 +796,38 @@ static func seed_vault(journey: bool = true) -> void:
 		note.modified = Time.get_datetime_string_from_unix_time(now + 60 + i)
 		VaultStore.save_note(note, false)
 		print("seeded: ", title)
-
-	# File the series under a real "Tutorials" folder
-	VaultStore.refresh_note_list()
-	for row in NOTES:
-		var ti: int = VaultStore.get_note_index(row[0])
-		if ti >= 0:
-			VaultStore.move_note(VaultStore.note_list[ti], FOLDER)
 	if journey:
 		_seed_journey()
+	_point_intros_at_tutorials()
 
-	# Point the welcome note at the tutorials
-	var intro_i: int = VaultStore.get_note_index("Introduction")
-	if intro_i >= 0:
-		var intro: ContentLayer = VaultStore.note_list[intro_i]
-		if not intro.raw_text.contains("[[Start Here: Tutorials]]"):
-			intro.raw_text = "New here? Start with [[Start Here: Tutorials]].\n\n" + intro.raw_text
+
+## The sample model, written only when the vault has no models/rocket.glb
+## (one that is already there may be the user's own).
+static func _write_rocket() -> void:
+	var models_dir: String = VaultStore.vault_path.path_join("models")
+	var path: String = models_dir.path_join("rocket.glb")
+	if FileAccess.file_exists(path):
+		return
+	DirAccess.make_dir_recursive_absolute(models_dir)
+	var rocket := _build_rocket()
+	var doc := GLTFDocument.new()
+	var state := GLTFState.new()
+	var err: int = doc.append_from_scene(rocket, state)
+	if err == OK:
+		err = doc.write_to_filesystem(state, path)
+	print("rocket.glb: ", "ok" if err == OK else "error %d" % err)
+	rocket.free()
+
+
+## Point the welcome note at the tutorials: an "Introduction" of the
+## tutorials' own (in the Tutorials folder, or tagged "tutorial"), never a
+## note of the user's that happens to share the title.
+static func _point_intros_at_tutorials() -> void:
+	var intros: Array = VaultStore.note_list.filter(func(n: ContentLayer) -> bool:
+		return n.title == "Introduction" and (VaultStore.folder_of(n) == FOLDER or n.tags.has("tutorial")))
+	for intro: ContentLayer in intros:   # a copy: save_note rebuilds note_list
+		if not intro.raw_text.contains("[[%s]]" % START):
+			intro.raw_text = ("New here? Start with [[%s]].\n\n" % START) + intro.raw_text
 			VaultStore.save_note(intro)
 
 

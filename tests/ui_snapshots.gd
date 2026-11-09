@@ -4,6 +4,8 @@ extends SceneTree
 ## Drives the app through every view and saves a PNG of each, rendered
 ## by Godot itself — no OS mouse/keyboard injection needed.
 
+const UiScale = preload("res://ui_scale.gd")
+
 func shot(app: Control, out: String, name: String) -> void:
 	for i in range(8):
 		await process_frame
@@ -15,6 +17,8 @@ func _init() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out: String = args[0] if args.size() > 0 else OS.get_user_data_dir()
 	DisplayServer.window_set_size(Vector2i(1280, 760))
+	UiScale.file_override = "user://test_display_snapshots.json"   # start dark; the toggle below must not change the real setting
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(UiScale.file_override))
 	for i in range(3):
 		await process_frame
 	var app: Control = load("res://note.tscn").instantiate()
@@ -36,4 +40,5 @@ func _init() -> void:
 	await shot(app, out, "6_light")
 	app._switch_layer("visual")
 	await shot(app, out, "7_light_read")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(UiScale.file_override))
 	quit()

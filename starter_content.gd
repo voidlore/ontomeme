@@ -15,12 +15,15 @@ const MARKER: String = ".ontomeme/starter-seeded"
 
 ## True when the default vault is missing, or exists with no notes and was
 ## never seeded (an earlier launch created the folder but was interrupted,
-## e.g. while macOS asked for access to Documents).
+## e.g. while macOS asked for access to Documents). A folder the app can't
+## list is not empty, just unreadable: never a first run, nothing is seeded.
 static func is_first_run(vault: String, default_vault: String) -> bool:
 	if VaultRegistry.normalize(vault) != VaultRegistry.normalize(default_vault):
 		return false
 	if not DirAccess.dir_exists_absolute(vault):
 		return true
+	if DirAccess.open(vault) == null:
+		return false
 	return not FileAccess.file_exists(vault.path_join(MARKER)) and not _has_notes(vault)
 
 
@@ -34,21 +37,31 @@ static func _has_notes(dir: String) -> bool:
 	return false
 
 
-## Seed the open vault. Returns the number of notes it now holds.
+## Seed the open vault (first run, or the palette's "Add the tutorials and
+## starter course" in any vault). Each course matches only its own notes, in
+## its own folder (Tutorials, Godot, Memetics): a note of the user's that
+## shares a lesson's title, and a models/rocket.glb already there, are left
+## as they are. Returns the number of notes the vault now holds.
 static func seed_vault() -> int:
 	Tutorials.seed_vault()
 	GodotCourse.seed_vault("Godot")
 	if DirAccess.dir_exists_absolute(COURSE_DIR):
-		NoteImporter.new().import_dir(COURSE_DIR, COURSE_FOLDER)
+		var importer := NoteImporter.new()
+		importer.scope_to_folder = true   # never a same-titled note of the user's
+		importer.import_dir(COURSE_DIR, COURSE_FOLDER)
 	VaultStore.refresh_note_list()
 	DirAccess.make_dir_recursive_absolute(VaultStore.vault_path.path_join(MARKER.get_base_dir()))
 	# Fold the courses so the Tutorials folder is in view (unless the vault
-	# already has sidebar state of its own)
-	var ui: String = VaultStore.data_dir().path_join("ui.json")
-	if not FileAccess.file_exists(ui):
-		var u := FileAccess.open(ui, FileAccess.WRITE)
+	# already has folds of its own; ui.json's other keys are kept)
+	var ui_path: String = VaultStore.data_dir().path_join("ui.json")
+	var ui: Variant = JSON.parse_string(FileAccess.get_file_as_string(ui_path)) if FileAccess.file_exists(ui_path) else {}
+	if not ui is Dictionary:
+		ui = {}
+	if not (ui as Dictionary).has("collapsed"):
+		ui["collapsed"] = ["Godot", COURSE_FOLDER]
+		var u := FileAccess.open(ui_path, FileAccess.WRITE)
 		if u != null:
-			u.store_string(JSON.stringify({"collapsed": ["Godot", COURSE_FOLDER]}, "\t"))
+			u.store_string(JSON.stringify(ui, "\t"))
 	var f := FileAccess.open(VaultStore.vault_path.path_join(MARKER), FileAccess.WRITE)
 	if f != null:
 		f.store_string(Time.get_datetime_string_from_system() + "\n")

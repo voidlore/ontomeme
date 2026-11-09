@@ -25,7 +25,9 @@ You write plain `.md` files; repo scripts lint them, import them into a vault
 
 - "Write a lesson / course / tutorial / quiz / flashcards" for Ontomeme.
 - Adding notes to an Ontomeme vault, or turning existing material into one.
-- Setting up learning objectives (Journey) for a set of notes.
+- Setting up learning objectives (Journey) for a set of notes. The format
+  (journey.json, front matter, the block `objective:` key, goals, scores) is
+  `references/objectives-protocol.md`.
 - Don't use for: changing the app's own code — read
   `references/app-internals.md` first, then work like any Godot project.
 
@@ -79,11 +81,13 @@ labels: on                     a: blue sphere                a: Orange
    Done when every lesson has one new idea and maps to one objective or more.
 2. **Lay out a source directory** that mirrors the vault you want:
    `course/<Folder>/NN_<name>.md` (the `NN_` prefix sets sidebar order),
-   models in `course/models/`. Start from
+   models in `course/models/`, pictures (png, jpg or webp) in
+   `course/images/`. Import copies both folders into the vault. Start from
    `templates/sample-course/` (copy it, then rename and rewrite).
    Front matter per file: `title:` (exact note title, used by links),
    `tags:`, and on the hub note `topic:` + one `objective: name | goal | description`
-   line per objective (goal = `fluent`, `learning` or `forget`).
+   line per objective (goal = `fluent`, `learning` or `forget`; rules in
+   `references/objectives-protocol.md`).
    Done when every `[[link]]`, `learn:` and `next:` names a `title:` that exists.
 3. **Write each lesson**: a short intro, one heading per sub-step, a live
    example of the idea (a 3D scene, a `show:` prop, a real link), then a
@@ -145,6 +149,12 @@ labels: on                     a: blue sphere                a: Orange
   comparison rows at the same `z`, and use `at x y z` to stack rows vertically.
 - `[[Link]]` to a missing note isn't broken: clicking it creates the note.
   Lint only warns.
+- **A picture is a line of its own**: `![caption](images/name.png)` with the
+  file in `course/images/` (a sentence or code block keeps it as text). The
+  app never loads web URLs, `data:` URIs, paths outside the vault or GIFs;
+  lint warns about those and about a file in neither `course/images/` nor
+  the vault's `images/`. `images/` and `models/` hold files, not notes:
+  `.md` files in them are not imported.
 
 ## Verification
 

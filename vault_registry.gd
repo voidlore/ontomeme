@@ -68,7 +68,30 @@ static func legacy_vault() -> String:
 
 
 static func default_vault() -> String:
-	return OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS).path_join("Ontomeme")
+	var docs: String = OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+	if docs.is_relative_path():
+		# Linux asks xdg-user-dir, and without it on PATH Godot says "" or ".":
+		# the vault would sit beside the executable, and an update extracted
+		# to a new folder would start a new one there.
+		docs = _xdg_documents()
+	return docs.path_join("Ontomeme")
+
+
+## Documents as xdg-user-dir would say: XDG_DOCUMENTS_DIR in user-dirs.dirs,
+## else ~/Documents.
+static func _xdg_documents() -> String:
+	var home: String = OS.get_environment("HOME")
+	var config: String = OS.get_environment("XDG_CONFIG_HOME")
+	var dirs: String = (config if config != "" else home.path_join(".config")).path_join("user-dirs.dirs")
+	if FileAccess.file_exists(dirs):
+		for line in FileAccess.get_file_as_string(dirs).split("\n"):
+			line = line.strip_edges()
+			if line.begins_with("XDG_DOCUMENTS_DIR="):
+				var p: String = line.trim_prefix("XDG_DOCUMENTS_DIR=").trim_prefix("\"").trim_suffix("\"")
+				p = home + p.trim_prefix("$HOME") if p.begins_with("$HOME") else p
+				if p.is_absolute_path():
+					return p
+	return home.path_join("Documents")
 
 
 ## Which vault to open at launch: --vault=<path>, else the last one used,

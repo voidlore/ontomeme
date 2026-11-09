@@ -119,6 +119,15 @@ func select(type: String, id: String) -> void:
 	refresh()
 
 
+## Show one objective (Read view's "Feeds objective" chip): selected in the
+## tree, its editor open.
+func select_objective(id: String) -> void:
+	select("objective", id)
+	var it: TreeItem = tree.get_selected()
+	if it != null:
+		tree.scroll_to_item(it)
+
+
 # ── Tree ────────────────────────────────────────────────────────────────────
 
 func _rebuild_tree() -> void:
@@ -138,13 +147,11 @@ func _rebuild_tree() -> void:
 			var oi: TreeItem = tree.create_item(ti)
 			oi.set_text(0, str(o.name) if str(o.name) != "" else "Untitled objective")
 			oi.set_metadata(0, {"type": "objective", "id": o.id})
-			var s: Dictionary = JourneyStore.summary(o)
+			var status: String = JourneyStore.objective_status(o)
 			if o.goal == "forget":
 				oi.set_custom_color(0, _col("text_faint"))
-			elif s.met:
-				oi.set_icon(0, ProgressStore.icon("done"))
-			elif s.attempts > 0:
-				oi.set_icon(0, ProgressStore.icon("review"))
+			elif status != "":
+				oi.set_icon(0, ProgressStore.icon(status))
 			oi.set_tooltip_text(0, "%s  ·  goal: %s" % [o.name, JourneyStore.GOAL_NAMES.get(o.goal, o.goal)])
 			if _sel_type == "objective" and _sel_id == o.id:
 				oi.select(0)
@@ -179,12 +186,24 @@ func _clear_editor() -> void:
 
 func _rebuild_editor() -> void:
 	_clear_editor()
+	if JourneyStore.last_error != "":
+		_editor.add_child(_file_warning(JourneyStore.last_error))
 	if _sel_type == "objective":
 		_build_objective_editor(JourneyStore.find_objective(_sel_id))
 	elif _sel_type == "topic":
 		_build_topic_editor(JourneyStore.find_topic(_sel_id))
 	else:
 		_build_empty()
+
+
+## Over the editor: the journey file couldn't be read, and where its bytes
+## were kept.
+func _file_warning(text: String) -> Control:
+	var panel := PanelContainer.new()
+	panel.name = "JourneyFileWarning"
+	panel.theme_type_variation = &"ReviewBanner"
+	panel.add_child(_body(text))
+	return panel
 
 
 func _build_empty() -> void:
@@ -469,6 +488,8 @@ func _demo_row(o: Dictionary, d: Dictionary, latest: Dictionary) -> Control:
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row2.add_child(sp)
 	var rm := _flat_button("", "Remove this demonstration (history stays)", Icons.get_icon("close", 14))
+	rm.accessibility_name = "Remove this demonstration"
+	rm.accessibility_description = "Its score history stays"
 	rm.pressed.connect(func() -> void:
 		JourneyStore.remove_demo(o.id, d.id)
 		refresh())

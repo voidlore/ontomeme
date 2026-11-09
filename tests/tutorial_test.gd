@@ -169,7 +169,7 @@ func _init() -> void:
 			c.confirmed.emit()
 	await frames(2)
 	await open("Tutorial 2: Linking Notes")
-	var shown_rx: Array = app.visual_layer.get_children().filter(func(c): return c is RichTextLabel and c.text.contains("[url=Tutorial 1: Writing Notes]") and c.text.contains("the first tutorial"))
+	var shown_rx: Array = app.visual_layer.get_children().filter(func(c): return c is RichTextLabel and LayerEngine.link_targets(c).has("Tutorial 1: Writing Notes") and c.text.contains("the first tutorial"))
 	check(shown_rx.size() >= 1, "[[Note|shown text]] renders the shown text as a link")
 
 	# ── Tutorial 3: empty 3d block = galaxy ──

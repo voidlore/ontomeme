@@ -1,5 +1,6 @@
 extends SceneTree
-## Renders each ```3d card of the "3D Scenes" note to PNG (needs a display).
+## Renders each ```3d card of the "3D Scenes" note to PNG (needs a display):
+## scene_<preset>.png is the window, card_<preset>.png the card's own 3D view.
 ##   godot --path . -s res://tests/scene3d_snapshots.gd -- <out_dir>
 func _init() -> void:
 	var out: String = OS.get_cmdline_user_args()[0] if OS.get_cmdline_user_args().size() > 0 else OS.get_user_data_dir()
@@ -24,6 +25,7 @@ func _init() -> void:
 		await create_timer(1.2).timeout
 		var img: Image = get_root().get_texture().get_image()
 		img.save_png(out.path_join("scene_%s.png" % card.preset))
+		card._viewport.get_texture().get_image().save_png(out.path_join("card_%s.png" % card.preset))
 		print("saved ", card.preset)
 	# expanded overlay
 	cards[0].get_child(0).get_child(1).get_child(0).get_child(2).pressed.emit()

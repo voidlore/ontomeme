@@ -22,6 +22,15 @@ static func open(name: String, seed: bool = true) -> String:
 	return path
 
 
+## Open an empty user://test-vault-hold/ (not remembered). Call it first thing
+## in a test's _init when the test awaits a frame before opening its own
+## vault: once the VaultStore autoload is ready it opens the startup vault
+## (the user's real one, which it seeds and remembers on first run) unless a
+## vault is already open. Returns its path.
+static func hold() -> String:
+	return open("hold", false)
+
+
 static func remove_tree(path: String) -> void:
 	var dir := DirAccess.open(path)
 	if dir == null:

@@ -76,6 +76,182 @@ func select_tree(id: String) -> void:
 			return
 		stack.append_array(cur.get_children())
 
+## Files in `dir` whose names match `pattern` (String.match: * and ?).
+func files_like(dir: String, pattern: String) -> PackedStringArray:
+	var found: PackedStringArray = []
+	for f in DirAccess.get_files_at(dir):
+		if f.match(pattern):
+			found.append(f)
+	return found
+
+func empty_dir(dir: String) -> void:
+	DirAccess.make_dir_recursive_absolute(dir)
+	for f in DirAccess.get_files_at(dir):
+		DirAccess.remove_absolute(dir.path_join(f))
+
+func write_text(p: String, text: String) -> void:
+	var f := FileAccess.open(p, FileAccess.WRITE)
+	f.store_string(text)
+	f.close()
+
+## Probe5: a journey.json cut off mid-write used to read as empty, and the
+## next change replaced it, losing every topic. Now its bytes are kept
+## beside it first, and saves never leave half a file.
+func check_unreadable_file_kept(jp: JourneyPanel) -> void:
+	const DIR: String = "user://test-journey-unreadable"
+	const TRUNCATED: String = '{"topics": [{"id": "t1", "name": "Mine", "objectives": []}, {"id": "t2", "na'
+	var before: String = JourneyStore.file_override
+	empty_dir(DIR)
+	JourneyStore.file_override = DIR.path_join("journey.json")
+	write_text(JourneyStore.file_override, TRUNCATED)
+	JourneyStore.invalidate()
+	jp.refresh()
+	await frames(2)
+	var banner: Node = find(jp, "JourneyFileWarning")
+	JourneyStore.add_topic("New")
+	var kept: PackedStringArray = files_like(DIR, "journey.unreadable-*.json")
+	check(kept.size() == 1 and FileAccess.get_file_as_string(DIR.path_join(kept[0])) == TRUNCATED, "a truncated journey.json is kept, byte for byte, as journey.unreadable-<stamp>.json before the next save (%s)" % [kept])
+	check(kept.size() == 1 and JourneyStore.last_error == "Your journey file couldn't be read; it was kept as %s." % kept[0], "last_error names the copy (%s)" % JourneyStore.last_error)
+	check(banner != null and (banner.get_child(0) as Label).text == JourneyStore.last_error, "the Journey tab shows it in a banner")
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(JourneyStore.file_override))
+	check(saved is Dictionary and saved.topics.size() == 1 and saved.topics[0].name == "New", "the next save writes a whole new journey.json")
+	check(files_like(DIR, "*.tmp").is_empty(), "no .tmp file is left after a save")
+
+	# The same broken bytes read twice are kept once; other broken bytes get their own copy
+	write_text(JourneyStore.file_override, TRUNCATED)
+	for i in range(2):
+		JourneyStore.invalidate()
+		JourneyStore.topics()
+	check(files_like(DIR, "journey.unreadable-*.json").size() == 1, "reading the same unreadable file again doesn't copy it again")
+	write_text(JourneyStore.file_override, '{"topics": "none"}')
+	JourneyStore.invalidate()
+	check(JourneyStore.topics().is_empty() and files_like(DIR, "journey.unreadable-*.json").size() == 2, "a file of the wrong shape ({\"topics\": \"none\"}) is kept too")
+	JourneyStore.save()
+	JourneyStore.invalidate()
+	jp.refresh()
+	await frames(2)
+	check(JourneyStore.last_error == "" and find(jp, "JourneyFileWarning") == null, "a readable file clears the error and the banner")
+
+	for f in DirAccess.get_files_at(DIR):
+		DirAccess.remove_absolute(DIR.path_join(f))
+	DirAccess.remove_absolute(DIR)
+	JourneyStore.file_override = before
+	JourneyStore.invalidate()
+
+## A journey.json the app can't open (no read permission here; on Windows, a
+## sync tool or antivirus holding it) used to read as empty, and the next
+## change renamed a new file over it: every topic gone, no message. Now
+## nothing is saved over it until it has been read.
+func check_unopenable_file_left_alone() -> void:
+	const DIR: String = "user://test-journey-unopenable"
+	const MINE: String = '{"version": 1, "topics": [{"id": "t1", "name": "Mine", "objectives": []}]}'
+	var before: String = JourneyStore.file_override
+	empty_dir(DIR)
+	var p: String = DIR.path_join("journey.json")
+	JourneyStore.file_override = p
+	write_text(p, MINE)
+	FileAccess.set_unix_permissions(p, 0)
+	if FileAccess.open(p, FileAccess.READ) != null:   # root, or a system without Unix permissions
+		print("SKIP  an unopenable journey.json: chmod 000 doesn't stop this user reading it")
+	else:
+		JourneyStore.invalidate()
+		check(JourneyStore.topics().is_empty() and JourneyStore.last_error.begins_with("Your journey file couldn't be opened"), "a journey.json that can't be opened loads empty, and last_error says so (%s)" % JourneyStore.last_error)
+		JourneyStore.add_topic("New")
+		check(JourneyStore.save() == ERR_FILE_CANT_READ, "save() refuses to write over it (ERR_FILE_CANT_READ)")
+		FileAccess.set_unix_permissions(p, FileAccess.UNIX_READ_OWNER | FileAccess.UNIX_WRITE_OWNER)
+		check(FileAccess.get_file_as_string(p) == MINE, "after add_topic, journey.json still holds its own bytes ('Mine' survives)")
+		check(files_like(DIR, "*.tmp").is_empty() and files_like(DIR, "journey.unreadable-*.json").is_empty(), "no .tmp and no unreadable copy was made of it")
+		JourneyStore.invalidate()   # what opening the vault again does
+		check(JourneyStore.topics().size() == 1 and JourneyStore.topics()[0].name == "Mine" and JourneyStore.last_error == "", "once it can be read again, it loads and the error clears")
+		JourneyStore.add_topic("New")
+		var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(p))
+		check(saved is Dictionary and saved.topics.size() == 2, "and saves go through again ('Mine' and 'New')")
+	FileAccess.set_unix_permissions(p, FileAccess.UNIX_READ_OWNER | FileAccess.UNIX_WRITE_OWNER)
+	empty_dir(DIR)
+	DirAccess.remove_absolute(DIR)
+	JourneyStore.file_override = before
+	JourneyStore.invalidate()
+
+## A save that removed journey.json and then couldn't rename journey.tmp over
+## it (Windows, with antivirus or a sync tool holding the new file) leaves the
+## .tmp as the only copy. Nothing read it back: the next run loaded an empty
+## journey, and its next save emptied journey.tmp. Now it's put back first.
+func check_leftover_tmp_put_back() -> void:
+	const DIR: String = "user://test-journey-leftover-tmp"
+	const HISTORY: String = '{"version": 1, "topics": [{"id": "t1", "name": "Two years of history", "objectives": []}]}'
+	var before: String = JourneyStore.file_override
+	empty_dir(DIR)
+	var p: String = DIR.path_join("journey.json")
+	var tmp: String = DIR.path_join("journey.tmp")
+	JourneyStore.file_override = p
+	write_text(tmp, HISTORY)
+	JourneyStore.invalidate()
+	check(JourneyStore.topics().size() == 1 and JourneyStore.topics()[0].name == "Two years of history" and JourneyStore.last_error == "", "with no journey.json, a journey.tmp beside it loads (%d topics, error '%s')" % [JourneyStore.topics().size(), JourneyStore.last_error])
+	check(FileAccess.get_file_as_string(p) == HISTORY and not FileAccess.file_exists(tmp), "and is put back as journey.json, byte for byte")
+	JourneyStore.add_topic("New")
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(p))
+	check(saved is Dictionary and saved.topics.map(func(t): return t.name) == ["Two years of history", "New"], "the next save keeps it and adds to it")
+
+	# A .tmp cut off mid-write (the first save ever crashed) is kept aside like any unreadable file
+	const CUT: String = '{"version": 1, "topics": [{"id": "t1", "na'
+	empty_dir(DIR)
+	write_text(tmp, CUT)
+	JourneyStore.invalidate()
+	var none: bool = JourneyStore.topics().is_empty()
+	var kept: PackedStringArray = files_like(DIR, "journey.unreadable-*.json")
+	check(none and kept.size() == 1 and FileAccess.get_file_as_string(DIR.path_join(kept[0])) == CUT, "a leftover journey.tmp that doesn't parse is kept as journey.unreadable-<stamp>.json (%s)" % [kept])
+
+	# When it can't be put back (here the folder is read-only), nothing writes over it
+	const RX: int = FileAccess.UNIX_READ_OWNER | FileAccess.UNIX_EXECUTE_OWNER
+	empty_dir(DIR)
+	write_text(tmp, HISTORY)
+	FileAccess.set_unix_permissions(DIR, RX)
+	var probe := FileAccess.open(DIR.path_join("probe"), FileAccess.WRITE)
+	if probe != null:   # root, or a system without Unix permissions
+		probe.close()
+		print("SKIP  a leftover journey.tmp that can't be put back: chmod 500 doesn't stop this user writing")
+	else:
+		JourneyStore.invalidate()
+		check(JourneyStore.topics().is_empty() and JourneyStore.last_error.begins_with("Your journey file was left as journey.tmp"), "a journey.tmp that can't be renamed back sets last_error (%s)" % JourneyStore.last_error)
+		JourneyStore.add_topic("New")
+		check(FileAccess.get_file_as_string(tmp) == HISTORY and not FileAccess.file_exists(p), "and the next save leaves journey.tmp's bytes alone")
+	FileAccess.set_unix_permissions(DIR, RX | FileAccess.UNIX_WRITE_OWNER)
+	JourneyStore.invalidate()
+	check(JourneyStore.topics().size() == 1 and FileAccess.file_exists(p) and JourneyStore.last_error == "", "once the folder can be written, it's put back and loads")
+
+	empty_dir(DIR)
+	DirAccess.remove_absolute(DIR)
+	JourneyStore.file_override = before
+	JourneyStore.invalidate()
+
+## Saves write journey.tmp and rename it over journey.json, so a write that
+## fails part way leaves journey.json as it was. Here journey.tmp can't be
+## written (a folder has its name): the save fails and journey.json keeps
+## its bytes, where a plain in-place write would replace them.
+func check_save_goes_through_tmp() -> void:
+	const DIR: String = "user://test-journey-atomic"
+	const MINE: String = '{"version": 1, "topics": [{"id": "t1", "name": "Mine", "objectives": []}]}'
+	var before: String = JourneyStore.file_override
+	empty_dir(DIR)
+	var p: String = DIR.path_join("journey.json")
+	var tmp: String = DIR.path_join("journey.tmp")
+	JourneyStore.file_override = p
+	write_text(p, MINE)
+	DirAccess.make_dir_absolute(tmp)
+	JourneyStore.invalidate()
+	JourneyStore.add_topic("New")
+	check(JourneyStore.topics().size() == 2 and JourneyStore.save() != OK, "with journey.tmp unwritable, save() returns an error")
+	check(FileAccess.get_file_as_string(p) == MINE, "and journey.json keeps its old bytes: the save never wrote it in place")
+	DirAccess.remove_absolute(tmp)
+	var saved: Variant = null
+	if JourneyStore.save() == OK:
+		saved = JSON.parse_string(FileAccess.get_file_as_string(p))
+	check(saved is Dictionary and saved.topics.size() == 2 and files_like(DIR, "*.tmp").is_empty() and not DirAccess.dir_exists_absolute(tmp), "once journey.tmp can be written, save() writes both topics, and no .tmp is left")
+	empty_dir(DIR)
+	DirAccess.remove_absolute(DIR)
+	JourneyStore.file_override = before
+	JourneyStore.invalidate()
+
 func _init() -> void:
 	var args := OS.get_cmdline_user_args()
 	out = args[0] if args.size() > 0 else ""
@@ -211,6 +387,11 @@ func _init() -> void:
 	await frames(2)
 	check(JourneyStore.topics().size() == 2 and jp._sel_type == "topic", "+ Topic creates and selects a new topic")
 	await shot("j6_new_topic")
+
+	await check_unreadable_file_kept(jp)
+	check_unopenable_file_left_alone()
+	check_leftover_tmp_put_back()
+	check_save_goes_through_tmp()
 
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(JourneyStore.file_override))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(ProgressStore.file_override))

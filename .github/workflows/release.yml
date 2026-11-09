@@ -88,6 +88,14 @@ jobs:
           n="$(ls "$v/Memetics" | wc -l)"
           [ "$n" -eq 6 ] || { echo "::error::expected 6 Memetics notes, found $n"; exit 1; }
 
+      - name: Install packaging tools
+        run: |
+          # squashfs-tools provides mksquashfs and file provides file(1), both
+          # required by appimagetool; librsvg2-bin provides rsvg-convert (used
+          # to rasterize the AppImage icon).
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq squashfs-tools file librsvg2-bin
+
       - name: Package
         run: |
           mkdir -p dist
@@ -96,21 +104,46 @@ jobs:
           mkdir -p "pkg/Ontomeme-$v-windows"
           cp build/windows/Ontomeme.exe "pkg/Ontomeme-$v-windows/"
           (cd pkg && zip -qr "../dist/Ontomeme-$v-windows-x86_64.zip" "Ontomeme-$v-windows")
-          # macOS: Godot already writes a zip holding Ontomeme.app (ad-hoc signed)
-          cp build/macos/Ontomeme.zip "dist/Ontomeme-$v-macos.zip"
-          # Linux: tar.gz keeps the executable bit
-          mkdir -p "pkg/Ontomeme-$v-linux"
-          cp build/linux/Ontomeme.x86_64 "pkg/Ontomeme-$v-linux/"
-          chmod +x "pkg/Ontomeme-$v-linux/Ontomeme.x86_64"
-          tar -C pkg -czf "dist/Ontomeme-$v-linux-x86_64.tar.gz" "Ontomeme-$v-linux"
+          # Linux: AppImage (AppDir + appimagetool); the script smoke-tests
+          # the result (executable, squashfs payload).
+          scripts/make_appimage.sh "$v" build/linux/Ontomeme.x86_64 \
+            "dist/Ontomeme-$v-linux-x86_64.AppImage"
+          # Checksums cover the artifacts this job publishes.
           (cd dist && sha256sum * > SHA256SUMS.txt)
+          # The macOS .app ships to the macos-dmg job, which turns it into
+          # the .dmg (hdiutil exists only on macOS runners) and appends the
+          # .dmg's hash to this checksum list. Stage the export zip and the
+          # checksums it will extend (SHA256SUMS.txt now exists, so the copy
+          # is of the real file).
+          mkdir -p "pkg/macos"
+          cp build/macos/Ontomeme.zip "pkg/macos/Ontomeme.zip"
+          cp dist/SHA256SUMS.txt "pkg/macos/SHA256SUMS.txt"
+          # Each package, and the pack inside it, must hold only app code and
+          # assets (scripts/check_pck_contents.sh); the .dmg is made from
+          # this macOS zip.
+          scripts/check_packages.sh dist "$v"
+          scripts/check_pck_contents.sh pkg/macos/Ontomeme.zip
           ls -la dist
 
-      - name: Create GitHub Release
+      - name: Upload macOS export for the dmg job
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-export
+          # The dmg job needs the exported .app zip AND the checksum list it
+          # will extend, so upload the whole staging dir.
+          path: pkg/macos
+
+      - name: Create GitHub Release (a draft)
         uses: softprops/action-gh-release@v2
         with:
           name: Ontomeme ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref_name, '-') }}
+          # A draft nobody else sees until the macos-dmg job has added the
+          # .dmg and publishes it: the body below and the README send Mac
+          # users to a .dmg this job can't build. If macos-dmg fails, no
+          # release goes out without a macOS download (RELEASING.md, "When
+          # something goes wrong").
+          draft: true
           generate_release_notes: true
           body: |
             Download the file for your computer below, then follow the
@@ -120,10 +153,76 @@ jobs:
             open it anyway.
 
             - Windows: `Ontomeme-${{ env.VERSION }}-windows-x86_64.zip`
-            - macOS (Apple Silicon and Intel): `Ontomeme-${{ env.VERSION }}-macos.zip`
-            - Linux: `Ontomeme-${{ env.VERSION }}-linux-x86_64.tar.gz`
+            - macOS (Apple Silicon and Intel): `Ontomeme-${{ env.VERSION }}-macos.dmg`
+            - Linux: `Ontomeme-${{ env.VERSION }}-linux-x86_64.AppImage`
           files: |
             dist/*.zip
-            dist/*.tar.gz
+            dist/*.AppImage
             dist/SHA256SUMS.txt
           fail_on_unmatched_files: true
+
+  macos-dmg:
+    # The .app is exported on the ubuntu runner (a universal binary covers
+    # both Apple Silicon and Intel); only the .dmg needs a macOS runner,
+    # because hdiutil is Apple tooling.
+    needs: release
+    if: github.repository == 'voidlore/ontomeme'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the macOS export
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-export
+          path: pkg/macos
+
+      - name: Build the .dmg
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          cd pkg/macos
+          unzip -q Ontomeme.zip
+          [ -d Ontomeme.app ] || { echo "::error::exported zip does not contain Ontomeme.app"; exit 1; }
+          mkdir -p "pkg-staging/Ontomeme-$v"
+          cp -R Ontomeme.app "pkg-staging/Ontomeme-$v/"
+          ln -s /Applications "pkg-staging/Ontomeme-$v/Applications"
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          # hdiutil create fails now and then on hosted runners ("Resource
+          # busy"): three tries.
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "Ontomeme $v" -srcfolder "pkg-staging/Ontomeme-$v" \
+                -ov -format UDBZ "$GITHUB_WORKSPACE/dist/Ontomeme-$v-macos.dmg"; then
+              break
+            fi
+            [ "$attempt" -lt 3 ] || { echo "::error::hdiutil create failed 3 times"; exit 1; }
+            echo "hdiutil create failed (try $attempt of 3); trying again in 15 s"
+            sleep 15
+          done
+          # Complete the checksum list the release job started, so the
+          # published SHA256SUMS.txt covers every artifact. shasum -a 256 is
+          # macOS's own and prints the same "<hash>  <file>" line as sha256sum.
+          cp SHA256SUMS.txt "$GITHUB_WORKSPACE/dist/"
+          (cd "$GITHUB_WORKSPACE/dist" && shasum -a 256 "Ontomeme-$v-macos.dmg" >> SHA256SUMS.txt)
+
+      - name: Verify the .dmg
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          hdiutil verify "dist/Ontomeme-$v-macos.dmg"
+
+      - name: Add the .dmg to the release and publish it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The release job left the release a draft. Add the .dmg and the
+          # completed SHA256SUMS.txt (--clobber replaces the release job's),
+          # then publish it. gh finds a draft by its tag; the body (the
+          # downloads and the generated notes) is left as the release job
+          # wrote it.
+          v="${GITHUB_REF_NAME#v}"
+          gh release upload "$GITHUB_REF_NAME" "dist/Ontomeme-$v-macos.dmg" dist/SHA256SUMS.txt \
+            --clobber -R "$GITHUB_REPOSITORY"
+          gh release edit "$GITHUB_REF_NAME" --draft=false -R "$GITHUB_REPOSITORY"
+          gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease,assets \
+            --jq '"draft=\(.isDraft) prerelease=\(.isPrerelease) assets: \([.assets[].name] | join(", "))"'

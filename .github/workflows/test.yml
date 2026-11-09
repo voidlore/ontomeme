@@ -25,3 +25,44 @@ jobs:
 
       - name: Run tests
         run: tests/run_all.sh
+
+      - name: Check the README
+        # Links, images and srcs exist and are published, the install table's
+        # downloads are in release.yml's release body, no <video> plays from
+        # the repo (scripts/check_readme.sh; the publish-set checks skip
+        # where there is no .publish/, as in the public repo).
+        run: bash scripts/check_readme.sh
+
+      - name: Check AppImage tool download line
+        run: |
+          # make_appimage.sh must save the appimagetool download with
+          # "curl -o "$tool"" (a fixed destination). "curl -O" saves into the
+          # current directory, so the following chmod +x "$tool" would fail
+          # and the release job would die in Package.
+          if grep -nE 'curl .*-O( |$)' scripts/make_appimage.sh; then
+            echo "::error::use 'curl -fsSL -o \"$tool\"' instead of 'curl -O'"
+            exit 1
+          fi
+          grep -qF 'curl -fsSL -o "$tool"' scripts/make_appimage.sh || \
+            { echo "::error::expected 'curl -fsSL -o \"$tool\"' in scripts/make_appimage.sh"; exit 1; }
+          echo "AppImage download line OK"
+
+      - name: Test the release content audit
+        # scripts/pck_list.py and scripts/check_pck_contents.sh on synthetic
+        # packs; release.yml runs the audit on every real package.
+        run: bash tests/pck_audit_test.sh
+
+      - name: Compatibility (OpenGL) renderer
+        # What machines without Vulkan, D3D12 or Metal get: three tests and
+        # a 3D card drawn with gl_compatibility under Xvfb, failing on any
+        # ERROR line (leaked GL textures included).
+        run: |
+          # Xvfb, and Mesa's software OpenGL to draw with
+          missing=()
+          command -v xvfb-run >/dev/null 2>&1 || missing+=(xvfb)
+          dpkg -s libgl1-mesa-dri >/dev/null 2>&1 || missing+=(libgl1-mesa-dri)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq "${missing[@]}"
+          fi
+          scripts/check_compat_renderer.sh

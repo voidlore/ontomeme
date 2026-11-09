@@ -11,6 +11,10 @@ extends RefCounted
 const FONT_SANS: FontFile = preload("res://fonts/AdwaitaSans-Regular.ttf")
 const FONT_MONO: FontFile = preload("res://fonts/AdwaitaMono-Regular.ttf")
 
+## Room a search result row (SearchResultItem) keeps under its title for the
+## excerpt line note.gd lays there.
+const EXCERPT_HEIGHT: int = 16
+
 
 static func palette(dark: bool) -> Dictionary:
 	if dark:
@@ -56,6 +60,25 @@ static func palette(dark: bool) -> Dictionary:
 	}
 
 
+## The tag colours, one per TagOps.color_index slot: the dot on a tag's
+## chip and before its TAGS row. Light tints on dark, deep ones on light,
+## each at least 3:1 (WCAG, non-text contrast) against the theme's `bg`
+## and `sidebar` (tests/tag_ops_test.gd checks it). Same order in both
+## themes, so a tag keeps its hue when the theme flips.
+static func tag_palette(dark: bool) -> Array[Color]:
+	if dark:
+		return [Color("f07178"), Color("f0a35e"), Color("e6c35c"), Color("8ccf7e"),
+			Color("5ec4b6"), Color("6cb6ff"), Color("b392f0"), Color("f28fc4")]
+	return [Color("c9353f"), Color("b35a10"), Color("8a6d00"), Color("2f7d32"),
+		Color("00796b"), Color("1f6fd1"), Color("7c4dce"), Color("c2397f")]
+
+
+## `tag`'s colour in this theme (stable: see TagOps.color_index).
+static func tag_color(tag: String, dark: bool) -> Color:
+	var colors: Array[Color] = tag_palette(dark)
+	return colors[TagOps.color_index(tag, colors.size())]
+
+
 # ── StyleBox helpers ────────────────────────────────────────────────────────
 
 static func _box(bg: Color, radius: int = 0, mx: int = 0, my: int = 0) -> StyleBoxFlat:
@@ -77,6 +100,12 @@ static func _border(sb: StyleBoxFlat, color: Color, l: int, t: int, r: int, b: i
 	sb.border_width_top = t
 	sb.border_width_right = r
 	sb.border_width_bottom = b
+	return sb
+
+
+## `sb` with `px` more room at the bottom.
+static func _room_below(sb: StyleBox, px: int) -> StyleBox:
+	sb.content_margin_bottom += px
 	return sb
 
 
@@ -116,9 +145,14 @@ static func _button_colors(t: Theme, type: String, normal: Color, hover: Color, 
 	t.set_color("font_hover_pressed_color", type, pressed)
 	t.set_color("font_focus_color", type, normal)
 	t.set_color("font_disabled_color", type, disabled)
+	# Icons follow the label in every state. An unset icon colour is Godot's
+	# white, which hides a Tab-focused icon on the light theme.
 	t.set_color("icon_normal_color", type, normal)
 	t.set_color("icon_hover_color", type, hover)
 	t.set_color("icon_pressed_color", type, pressed)
+	t.set_color("icon_hover_pressed_color", type, pressed)
+	t.set_color("icon_focus_color", type, normal)
+	t.set_color("icon_disabled_color", type, disabled)
 
 
 # ── Theme builder ───────────────────────────────────────────────────────────
@@ -157,6 +191,13 @@ static func build(dark: bool) -> Theme:
 
 	_variation(t, "ReviewBanner", "PanelContainer")
 	t.set_stylebox("panel", "ReviewBanner", _border(_box(Color(0.94, 0.63, 0.25, 0.10 if dark else 0.14), 8, 16, 12), Color("f0a040"), 3, 0, 0, 0))
+
+	# Read view: a > quote (accent rule on the left), YAML front matter (muted box)
+	_variation(t, "QuotePanel", "PanelContainer")
+	t.set_stylebox("panel", "QuotePanel", _border(_box(Color(p.accent, 0.07 if dark else 0.06), 6, 16, 10), p.accent, 3, 0, 0, 0))
+
+	_variation(t, "FrontMatterPanel", "PanelContainer")
+	t.set_stylebox("panel", "FrontMatterPanel", _border(_box(p.sidebar, 8, 14, 10), p.border, 1, 1, 1, 1))
 
 	_variation(t, "SceneCard", "PanelContainer")
 	t.set_stylebox("panel", "SceneCard", _border(_box(Color("0b0b0f"), 12), Color(1, 1, 1, 0.08) if dark else Color(0, 0, 0, 0.12), 1, 1, 1, 1))
@@ -210,6 +251,10 @@ static func build(dark: bool) -> Theme:
 	_button_colors(t, "NoteItem", p.text_muted, p.text, p.text, p.text_faint)
 	t.set_font("font", "NoteItem", FONT_SANS)
 	t.set_font_size("font_size", "NoteItem", 13)
+	# A search result: a NoteItem with room under the title for the match's excerpt
+	_variation(t, "SearchResultItem", "NoteItem")
+	_button_styles(t, "SearchResultItem", _room_below(_empty(10, 7), EXCERPT_HEIGHT),
+		_room_below(_box(p.hover, 6, 10, 7), EXCERPT_HEIGHT), _room_below(_box(Color(p.accent, 0.16), 6, 10, 7), EXCERPT_HEIGHT))
 
 	# Segmented layer switcher — pressed segment lifts onto a card
 	_variation(t, "SegmentButton", "Button")
@@ -235,6 +280,56 @@ static func build(dark: bool) -> Theme:
 	t.set_stylebox("normal", "SearchEdit", _box(p.hover, 7, 10, 6))
 	t.set_stylebox("focus", "SearchEdit", _border(_box(p.hover, 7, 10, 6), Color(p.accent, 0.7), 1, 1, 1, 1))
 	t.set_font_size("font_size", "SearchEdit", 13)
+
+	# TagBar: the tag input and the removable #tag chips below the title
+	_variation(t, "TagEdit", "LineEdit")
+	t.set_font_size("font_size", "TagEdit", 13)
+	t.set_stylebox("normal", "TagEdit", _box(p.elevated, 6, 8, 5))
+	t.set_stylebox("focus", "TagEdit", _border(_box(Color(0, 0, 0, 0), 6, 8, 5), Color(p.accent, 0.7), 1, 1, 1, 1))
+
+	_variation(t, "TagButton", "Button")
+	t.set_font_size("font_size", "TagButton", 12)
+	_button_styles(t, "TagButton", _empty(6, 4), _box(p.hover, 5, 6, 4), _box(p.active, 5, 6, 4))
+	_button_colors(t, "TagButton", p.text_muted, p.text, p.text, p.text_faint)
+
+	# A tag chip is one pill (the panel) holding two flat buttons: the #tag
+	# body, which filters the notes by the tag, and the ×, which removes it.
+	# The pill takes the accent tint while its tag is the active filter.
+	_variation(t, "TagChip", "PanelContainer")
+	t.set_stylebox("panel", "TagChip", _box(p.active, 8))
+	_variation(t, "TagChipActive", "PanelContainer")
+	t.set_stylebox("panel", "TagChipActive", _box(Color(p.accent, 0.22), 8))
+
+	_variation(t, "TagChipBody", "Button")
+	t.set_font_size("font_size", "TagChipBody", 12)
+	var body_box: StyleBoxEmpty = _empty(10, 4)
+	body_box.content_margin_right = 2
+	_button_styles(t, "TagChipBody", body_box, body_box, body_box)
+	_button_colors(t, "TagChipBody", p.text, p.accent, p.accent, p.text_faint)
+
+	_variation(t, "TagChipRemove", "Button")
+	var remove_box: StyleBoxEmpty = _empty(8, 4)
+	remove_box.content_margin_left = 4
+	_button_styles(t, "TagChipRemove", remove_box, remove_box, remove_box)
+	_button_colors(t, "TagChipRemove", p.text_muted, p.danger, p.danger, p.text_faint)
+
+	# TagBar autocomplete: the vault's matching tags in a card under the input
+	_variation(t, "TagSuggestPanel", "PanelContainer")
+	var suggest: StyleBoxFlat = _border(_box(p.elevated, 8, 4, 4), p.border_strong, 1, 1, 1, 1)
+	suggest.shadow_color = p.shadow
+	suggest.shadow_size = 12
+	suggest.shadow_offset = Vector2(0, 4)
+	t.set_stylebox("panel", "TagSuggestPanel", suggest)
+	_variation(t, "TagSuggestList", "ItemList")
+	t.set_stylebox("panel", "TagSuggestList", _empty(2, 2))
+	t.set_font_size("font_size", "TagSuggestList", 13)
+	t.set_constant("v_separation", "TagSuggestList", 2)
+
+	# Tag filter list in the sidebar: one row per tag, press to filter the notes
+	_variation(t, "TagSidebarItem", "Button")
+	t.set_font_size("font_size", "TagSidebarItem", 13)
+	_button_styles(t, "TagSidebarItem", _box(Color(0, 0, 0, 0), 5, 8, 4), _box(p.hover, 5, 8, 4), _box(p.active, 5, 8, 4))
+	_button_colors(t, "TagSidebarItem", p.text_muted, p.text, p.text, p.text_faint)
 
 	# Inline document title, Obsidian style: big, chromeless
 	_variation(t, "TitleEdit", "LineEdit")
@@ -279,6 +374,14 @@ static func build(dark: bool) -> Theme:
 	t.set_color("font_color", "SectionLabel", p.text_faint)
 	t.set_font("font", "SectionLabel", semibold)
 	t.set_font_size("font_size", "SectionLabel", 11)
+	# A SectionLabel that folds its section away (the TAGS header): a chevron
+	# before the caps, no chrome
+	_variation(t, "SectionToggle", "Button")
+	t.set_font("font", "SectionToggle", semibold)
+	t.set_font_size("font_size", "SectionToggle", 11)
+	t.set_constant("h_separation", "SectionToggle", 2)
+	_button_styles(t, "SectionToggle", _empty(0, 2), _empty(0, 2), _empty(0, 2))
+	_button_colors(t, "SectionToggle", p.text_faint, p.text_muted, p.text_muted, p.text_faint)
 	_variation(t, "BrandLabel", "Label")
 	t.set_font("font", "BrandLabel", semibold)
 	t.set_font_size("font_size", "BrandLabel", 15)

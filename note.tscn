@@ -54,15 +54,19 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 tooltip_text = "Command palette (Ctrl+P)"
+accessibility_name = "Command palette"
+accessibility_description = "Ctrl+P"
 mouse_default_cursor_shape = 2
 theme_type_variation = &"FlatButton"
-text = "⌘"
+icon_alignment = 1
 
 [node name="NewNoteButton" type="Button" parent="AppLayout/Body/Sidebar/SidebarVBox/SidebarHeader"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
 tooltip_text = "New note (Ctrl+N)"
+accessibility_name = "New note"
+accessibility_description = "Ctrl+N"
 mouse_default_cursor_shape = 2
 theme_type_variation = &"FlatButton"
 text = "+"
@@ -73,6 +77,58 @@ layout_mode = 2
 theme_type_variation = &"SearchEdit"
 placeholder_text = "Search notes   Ctrl+F"
 clear_button_enabled = true
+
+[node name="TagSidebar" type="VBoxContainer" parent="AppLayout/Body/Sidebar/SidebarVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="TagSidebarHeader" type="HBoxContainer" parent="AppLayout/Body/Sidebar/SidebarVBox/TagSidebar"]
+layout_mode = 2
+
+[node name="TagSidebarLabel" type="Button" parent="AppLayout/Body/Sidebar/SidebarVBox/TagSidebar/TagSidebarHeader"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 2
+theme_type_variation = &"SectionToggle"
+text = "TAGS"
+alignment = 0
+
+[node name="TagSidebarClear" type="Button" parent="AppLayout/Body/Sidebar/SidebarVBox/TagSidebar/TagSidebarHeader"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_stretch_ratio = 3.0
+tooltip_text = "Clear the tag filter"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"TagButton"
+alignment = 2
+text_overrun_behavior = 3
+clip_text = true
+icon_alignment = 2
+accessibility_name = "Clear the tag filter"
+
+[node name="TagSidebarFilter" type="LineEdit" parent="AppLayout/Body/Sidebar/SidebarVBox/TagSidebar"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"SearchEdit"
+placeholder_text = "Filter tags"
+clear_button_enabled = true
+
+[node name="TagSidebarScroll" type="ScrollContainer" parent="AppLayout/Body/Sidebar/SidebarVBox/TagSidebar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="TagSidebarList" type="VBoxContainer" parent="AppLayout/Body/Sidebar/SidebarVBox/TagSidebar/TagSidebarScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 1
 
 [node name="NotesHeader" type="HBoxContainer" parent="AppLayout/Body/Sidebar/SidebarVBox"]
 layout_mode = 2
@@ -127,9 +183,10 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(34, 0)
 layout_mode = 2
 tooltip_text = "Toggle light / dark"
+accessibility_name = "Toggle light / dark theme"
 mouse_default_cursor_shape = 2
 theme_type_variation = &"FlatButton"
-text = "☾"
+icon_alignment = 1
 
 [node name="Editor" type="VBoxContainer" parent="AppLayout/Body"]
 layout_mode = 2
@@ -200,6 +257,41 @@ theme_type_variation = &"SegmentButton"
 toggle_mode = true
 text = "Graph"
 
+[node name="StarButton" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Star this note (shows under Starred)"
+accessibility_name = "Star this note"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"FlatButton"
+toggle_mode = true
+icon_alignment = 1
+
+[node name="PinButton" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Pin this note to the top of the list"
+accessibility_name = "Pin this note to the top"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"FlatButton"
+toggle_mode = true
+icon_alignment = 1
+
+[node name="ExportMDButton" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "Export as Markdown"
+accessibility_name = "Export as Markdown"
+mouse_default_cursor_shape = 2
+theme_type_variation = &"FlatButton"
+icon_alignment = 1
+
 [node name="DeleteButton" type="Button" parent="AppLayout/Body/Editor/TopBar/TopBarHBox"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -268,10 +360,55 @@ layout_mode = 2
 theme_type_variation = &"TitleEdit"
 placeholder_text = "Untitled"
 
+[node name="TagBar" type="VBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TagInputRow" type="HBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/TagBar"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TagInput" type="LineEdit" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/TagBar/TagInputRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(120, 0)
+theme_type_variation = &"TagEdit"
+placeholder_text = "Add a tag…"
+
+[node name="TagAddButton" type="Button" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/TagBar/TagInputRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"TagButton"
+text = "add"
+
+[node name="TagChips" type="HFlowContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/TagBar"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
+
+[node name="TagSuggest" type="PanelContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/TagBar"]
+unique_name_in_owner = true
+visible = false
+top_level = true
+theme_type_variation = &"TagSuggestPanel"
+
+[node name="TagSuggestList" type="ItemList" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/TagBar/TagSuggest"]
+unique_name_in_owner = true
+layout_mode = 2
+focus_mode = 0
+theme_type_variation = &"TagSuggestList"
+auto_height = true
+
 [node name="NoteMeta" type="Label" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"FaintLabel"
+text_overrun_behavior = 3
 
 [node name="MetaGap" type="HSeparator" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox"]
 layout_mode = 2
@@ -296,6 +433,7 @@ visible = false
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
+vertical_scroll_mode = 4
 
 [node name="DocLayers" type="VBoxContainer" parent="AppLayout/Body/Editor/ContentPanel/NoteContent/DocVBox/LayerStack/DocScroll"]
 layout_mode = 2
@@ -331,10 +469,12 @@ theme_override_constants/separation = 16
 [node name="StatusLabel" type="Label" parent="AppLayout/StatusBar/StatusHBox"]
 unique_name_in_owner = true
 layout_mode = 2
+mouse_filter = 1
 size_flags_horizontal = 3
 theme_type_variation = &"FaintLabel"
 text = "Ready"
 clip_text = true
+text_overrun_behavior = 3
 
 [node name="WordCount" type="Label" parent="AppLayout/StatusBar/StatusHBox"]
 unique_name_in_owner = true

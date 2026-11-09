@@ -1,0 +1,257 @@
+name: signing-selftest
+
+# Run by hand (Actions > signing-selftest > Run workflow, or
+# `gh workflow run signing-selftest.yml -R voidlore/ontomeme`) to prove the
+# whole signing path on real runners before any paid certificate exists:
+#   sign        (Linux) exports the macOS and Windows builds, makes a
+#               throwaway self-signed "Ontomeme Selftest" certificate, signs
+#               the app with macos_sign.sh (rcodesign) and the exe with
+#               windows_sign.sh (jsign, PKCS12), and checks both with
+#               check_signatures.py;
+#   verify-mac  codesign accepts the app (deep, strict, hardened runtime,
+#               signed by Ontomeme Selftest) and Gatekeeper rejects it, as it
+#               must for a certificate that is not Developer ID;
+#   verify-win  the exe's Authenticode signer is Ontomeme Selftest, and the
+#               signed exe still boots headless from its embedded pck.
+# It uses no repository secrets: scripts/sign/check_workflows.py enforces
+# that, the manual trigger and the repository guard on every job.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    if: github.repository == 'voidlore/ontomeme'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GODOT_VERSION: 4.7.2
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and export templates
+        id: godot
+        run: |
+          cd "$RUNNER_TEMP"
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          echo "GODOT=$RUNNER_TEMP/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest"
+          unzip -q templates.tpz -d tpl
+          mv tpl/templates/* "$dest/"
+          ls "$dest"
+
+      - name: Export macOS and Windows
+        id: export
+        run: |
+          "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
+          mkdir -p build/windows build/macos
+          export_one() {
+            log="build/export-$(echo "$1" | tr ' ' '_').log"
+            "$GODOT" --headless --path . --export-release "$1" "$2" >"$log" 2>&1 || true
+            cat "$log"
+            if [ ! -s "$2" ] || grep -qE '^ERROR|SCRIPT ERROR' "$log"; then
+              echo "::error::Export of preset \"$1\" failed"
+              exit 1
+            fi
+          }
+          export_one "Windows x86_64" build/windows/Ontomeme.exe
+          export_one "macOS"          build/macos/Ontomeme.zip
+          # As exported: an ad-hoc signed app and an unsigned exe.
+          python3 -I scripts/sign/check_signatures.py --expect-macos=adhoc \
+            build/macos/Ontomeme.zip build/windows/Ontomeme.exe
+
+      - name: Install rcodesign and jsign
+        id: signers
+        run: |
+          scripts/sign/install_rcodesign.sh "$RUNNER_TEMP/bin"
+          scripts/sign/install_jsign.sh "$RUNNER_TEMP/bin"
+          java -version
+
+      - name: Make a throwaway signing certificate
+        id: cert
+        run: |
+          # Self-signed, valid for two days, made in this job and kept
+          # nowhere else: Gatekeeper and SmartScreen trust nothing it signs.
+          # Later steps of this job only get it, through GITHUB_ENV.
+          umask 077
+          dir="$RUNNER_TEMP/selftest-cert"
+          mkdir -p "$dir"
+          SELFTEST_P12_PASSWORD="$(openssl rand -hex 16)"
+          export SELFTEST_P12_PASSWORD
+          echo "::add-mask::$SELFTEST_P12_PASSWORD"
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout "$dir/key.pem" -out "$dir/cert.pem" \
+            -subj "/CN=Ontomeme Selftest" -days 2 -addext "extendedKeyUsage=codeSigning"
+          openssl pkcs12 -export -inkey "$dir/key.pem" -in "$dir/cert.pem" -name "Ontomeme Selftest" \
+            -passout env:SELFTEST_P12_PASSWORD -out "$dir/selftest.p12"
+          rm -f "$dir/key.pem"
+          openssl x509 -in "$dir/cert.pem" -noout -subject -enddate -fingerprint -sha256
+          {
+            echo "SELFTEST_P12=$(base64 -w0 "$dir/selftest.p12")"
+            echo "SELFTEST_P12_PASSWORD=$SELFTEST_P12_PASSWORD"
+          } >>"$GITHUB_ENV"
+
+      - name: Sign the macOS app (rcodesign)
+        id: sign-macos
+        run: |
+          APPLE_P12="$SELFTEST_P12" APPLE_P12_PASSWORD="$SELFTEST_P12_PASSWORD" \
+            scripts/sign/macos_sign.sh build/macos/Ontomeme.zip build/macos/Ontomeme-signed.zip
+
+      - name: Sign the Windows exe (jsign, PKCS12)
+        id: sign-windows
+        run: |
+          WIN_SIGN_STORETYPE=PKCS12 WIN_PFX="$SELFTEST_P12" WIN_SIGN_STOREPASS="$SELFTEST_P12_PASSWORD" \
+            scripts/sign/windows_sign.sh build/windows/Ontomeme.exe
+
+      - name: Check both signatures
+        id: check
+        run: |
+          python3 -I scripts/sign/check_signatures.py --expect-macos=signed --expect-windows=signed \
+            build/macos/Ontomeme-signed.zip build/windows/Ontomeme.exe | tee build/check.txt
+          # Every signer is this run's certificate.
+          if ! grep -q 'signer: ' build/check.txt ||
+            grep 'signer: ' build/check.txt | grep -qv 'signer: Ontomeme Selftest ('; then
+            echo "::error::an artifact is not signed by Ontomeme Selftest"
+            exit 1
+          fi
+
+      - name: Upload the signed macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-macos
+          path: build/macos/Ontomeme-signed.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the signed Windows exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-windows
+          path: build/windows/Ontomeme.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-mac:
+    needs: sign
+    if: github.repository == 'voidlore/ontomeme'
+    runs-on: macos-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: selftest-macos
+
+      - name: Unpack the signed app
+        run: |
+          ditto -x -k Ontomeme-signed.zip .
+          ls -l Ontomeme.app/Contents/MacOS
+
+      - name: codesign --verify --deep --strict
+        run: codesign --verify --deep --strict --verbose=2 Ontomeme.app
+
+      - name: Hardened runtime, signed by Ontomeme Selftest
+        run: |
+          # expect_selftest [ARGS]: codesign -dvvv ARGS Ontomeme.app (it prints
+          # to stderr) shows the hardened runtime alone and our certificate.
+          expect_selftest() {
+            out="$(codesign -dvvv "$@" Ontomeme.app 2>&1)"
+            printf '== codesign -dvvv %s Ontomeme.app\n%s\n' "$*" "$out"
+            if ! grep -qF 'flags=0x10000(runtime)' <<<"$out"; then
+              echo "::error::codesign -dvvv $* shows no flags=0x10000(runtime)"
+              return 1
+            fi
+            if ! grep -qx 'Authority=Ontomeme Selftest' <<<"$out"; then
+              echo "::error::codesign -dvvv $* shows no Authority=Ontomeme Selftest"
+              return 1
+            fi
+          }
+          expect_selftest
+          expect_selftest -a arm64
+          expect_selftest -a x86_64
+
+      - name: Gatekeeper rejects the self-signed app
+        run: |
+          # The certificate is not Developer ID, so spctl must say 'rejected'.
+          # If it ever accepts, this check is not testing anything.
+          status=0
+          spctl --assess --type execute -vv Ontomeme.app >spctl.txt 2>&1 || status=$?
+          cat spctl.txt
+          if [ "$status" -eq 0 ] || ! grep -q 'rejected' spctl.txt; then
+            echo "::error::spctl did not reject the self-signed app (exit $status)"
+            exit 1
+          fi
+
+  verify-win:
+    needs: sign
+    if: github.repository == 'voidlore/ontomeme'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: selftest-windows
+
+      - name: Authenticode signer is Ontomeme Selftest
+        run: |
+          $sig = Get-AuthenticodeSignature -FilePath .\Ontomeme.exe
+          $sig | Format-List Status, StatusMessage, SignerCertificate, TimeStamperCertificate
+          # Status is not Valid (Windows does not trust the self-signed root);
+          # the signer must still be this run's certificate.
+          $subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
+          if ($subject -notmatch '(^|, )CN=Ontomeme Selftest(,|$)') {
+            Write-Output "::error::Ontomeme.exe is not signed by Ontomeme Selftest (status $($sig.Status), subject '$subject')"
+            exit 1
+          }
+
+      - name: Boot the signed exe headless in a temp profile
+        run: |
+          # A first run with user:// (APPDATA) in a new folder. The app must
+          # load the pck embedded in the signed exe, log no script error and
+          # seed the default vault from it.
+          $temp = Join-Path $env:RUNNER_TEMP 'selftest-profile'
+          $env:APPDATA = Join-Path $temp 'Roaming'
+          $env:LOCALAPPDATA = Join-Path $temp 'Local'
+          New-Item -ItemType Directory -Force -Path $env:APPDATA, $env:LOCALAPPDATA | Out-Null
+          $log = Join-Path $temp 'godot.log'
+          $out = Join-Path $temp 'stdout.txt'
+          $err = Join-Path $temp 'stderr.txt'
+          $exe = (Resolve-Path .\Ontomeme.exe).Path
+          $p = Start-Process -FilePath $exe -ArgumentList '--headless', '--quit-after', '200', '--log-file', "`"$log`"" `
+            -RedirectStandardOutput $out -RedirectStandardError $err -NoNewWindow -PassThru
+          $null = $p.Handle  # keeps ExitCode readable once the process is gone
+          if (-not $p.WaitForExit(150000)) {
+            $p.Kill()
+            Write-Output "::error::Ontomeme.exe did not quit within 150 s"
+            exit 1
+          }
+          $text = (@($out, $err, $log) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content -Raw $_ }) -join "`n"
+          Write-Output $text
+          if ($p.ExitCode -ne 0) {
+            Write-Output "::error::Ontomeme.exe exited with $($p.ExitCode)"
+            exit 1
+          }
+          if ($text -match 'SCRIPT ERROR|Parse Error|load project data') {
+            Write-Output "::error::the signed Ontomeme.exe logged errors"
+            exit 1
+          }
+          $vault = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Ontomeme'
+          if (-not (Test-Path (Join-Path $vault 'Tutorials'))) {
+            Write-Output "::error::the first run did not seed $vault\Tutorials, so the embedded pck did not load"
+            exit 1
+          }
+          Get-ChildItem $vault | Format-Table Name

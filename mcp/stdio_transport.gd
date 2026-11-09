@@ -7,14 +7,29 @@ extends Node
 ##
 ## stdout must carry protocol bytes only: run Godot with `--no-header` (the
 ## engine banner goes to stdout otherwise) and never `--quiet` (it silences
-## print(), which is how replies are written). Logs go to stderr.
+## print(), which is how replies are written). Logs go to stderr. Godot also
+## copies both into its log file, and replies hold note text: launch with
+## DesktopConfig.LOG_ARGS (`--log-file user://logs/mcp.log`) so they stay out
+## of godot.log, the app's own log.
 ##
 ## Every stdin read in Godot blocks, so a worker thread reads; messages are
 ## handled here on the main thread, one at a time. EOF on stdin quits the tree.
+## What the protocol sends on its own (its `outgoing` signal: requests to the
+## client, results that came later) is written the same way, one line each,
+## in the order it is emitted, and each frame calls the protocol's tick() so
+## an unanswered request times out.
+
+const McpProtocol = preload("res://mcp/protocol.gd")
 
 signal stdin_closed
 
-var protocol: RefCounted
+var protocol: RefCounted:
+	set(p):
+		if protocol != null and protocol.has_signal("outgoing") and protocol.outgoing.is_connected(_send):
+			protocol.outgoing.disconnect(_send)
+		protocol = p
+		if protocol != null and protocol.has_signal("outgoing"):
+			protocol.outgoing.connect(_send)
 ## Quit the SceneTree when stdin closes (the client went away).
 var quit_on_eof: bool = true
 
@@ -70,6 +85,8 @@ func _process(_delta: float) -> void:
 	_mutex.unlock()
 	for line in lines:
 		_handle(line.strip_edges())
+	if protocol != null and protocol.has_method("tick"):
+		protocol.tick(Time.get_ticks_msec())
 	if eof:
 		_done = true
 		_reader.wait_to_finish()
@@ -83,8 +100,19 @@ func _handle(line: String) -> void:
 		return
 	var reply: String = protocol.handle_line(line)
 	if reply != "":
-		# JSON.stringify escapes control characters, so a reply is one line.
+		# McpProtocol.to_json escapes every control character, so a reply is
+		# one line of valid JSON.
 		print(reply)
+
+
+## One message the protocol sent on its own, as one line. Written from the
+## main thread only, so lines never interleave; emitted on another thread it
+## waits for the next frame.
+func _send(message: Dictionary) -> void:
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		_send.call_deferred(message)
+		return
+	print(McpProtocol.to_json(message))
 
 
 func _exit_tree() -> void:
