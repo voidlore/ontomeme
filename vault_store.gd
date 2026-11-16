@@ -109,14 +109,17 @@ const TMP_PATH_MAX: int = 240
 ## atomic saves, to act out how Windows renames (see _move_tmp_into_place).
 static var rename_hook: Callable = Callable()
 
-## Deleted notes go here (trash_note), and deleted folders when the system
-## trash refuses them; hidden, so scans, the watcher and MCP skip it. The
+## Deleted notes (trash_note) and folders (delete_folder) go here, so the
+## app's Trash can list and restore both; hidden, so scans, the watcher and MCP skip it. The
 ## same folder and layout as the MCP server's delete_note
 ## (mcp/vault_tools.gd TRASH_DIR): one trash holds what both deleted.
 const TRASH_DIR: String = ".trash"
 
-## Tests only: stands in for OS.move_to_trash(path) -> Error in delete_folder.
-static var system_trash_hook: Callable = Callable()
+## What the app's Trash knows about what it put in .trash:
+## {trash_rel: {original, title, deleted (unix time), folder}}. Only the app
+## writes it. A file it doesn't list (the MCP server deleted it, or an older
+## build did) still shows, under what its path says (trash_entries).
+const TRASH_LOG: String = TRASH_DIR + "/.deleted.json"
 
 ## Longest title slug in a note's file name (filename_stem).
 const MAX_SLUG_CHARS: int = 80
@@ -2032,6 +2035,7 @@ static func trash_note(note: ContentLayer) -> String:
 	DirAccess.make_dir_recursive_absolute((vault_path + dest_rel).get_base_dir())
 	if DirAccess.rename_absolute(path, vault_path + dest_rel) != OK:
 		return ""
+	_log_trashed(dest_rel, path.substr(vault_path.length()), note.title, false)
 	ProgressStore.note_trashed(vault_path + dest_rel, note.title)
 	JourneyStore.note_trashed(vault_path + dest_rel, note.title)
 	_forget(path)
@@ -2066,6 +2070,7 @@ static func restore_from_trash(trash_rel: String, original_rel: String) -> Conte
 	var trashed: Resource = ResourceLoader.get_cached_ref(vault_path + trash_rel) if ResourceLoader.has_cached(vault_path + trash_rel) else null
 	if DirAccess.rename_absolute(vault_path + trash_rel, dest) != OK:
 		return null
+	_log_restored(trash_rel)
 	_forget(dest)
 	if trashed is ContentLayer:
 		trashed.take_over_path(dest)
@@ -2081,6 +2086,126 @@ static func restore_from_trash(trash_rel: String, original_rel: String) -> Conte
 			JourneyStore.note_restored(vault_path + trash_rel, note.title)
 			return note
 	return null
+
+
+## Everything the Trash can restore, newest delete first, as dictionaries:
+## trash_rel, original_rel, title, folder (bool), deleted (unix time, 0 when
+## unknown) and notes (how many a folder holds). A folder the app deleted is
+## one entry; any other note file in .trash is its own.
+static func trash_entries() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	_collect_trash(TRASH_DIR, _read_trash_log(), out)
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a.deleted != b.deleted:
+			return a.deleted > b.deleted
+		return str(a.title).naturalnocasecmp_to(str(b.title)) < 0)
+	return out
+
+
+static func _collect_trash(rel: String, trash_log: Dictionary, out: Array[Dictionary]) -> void:
+	var dir := DirAccess.open(vault_path + rel)
+	if dir == null:
+		return
+	for name in dir.get_directories():
+		var sub: String = rel.path_join(name)
+		var known: Dictionary = trash_log.get(sub, {})
+		if dir.is_link(name):
+			continue
+		if known.get("folder", false):
+			var count: int = 0
+			for f in _files_under(vault_path + sub + "/"):
+				if f.get_extension().to_lower() in ["tres", "txt"]:
+					count += 1
+			out.append({"trash_rel": sub, "original_rel": str(known.get("original", sub.substr(TRASH_DIR.length() + 1))),
+				"title": str(known.get("title", name)), "folder": true, "deleted": int(known.get("deleted", 0)), "notes": count})
+		else:
+			_collect_trash(sub, trash_log, out)
+	for name in dir.get_files():
+		if name.get_extension().to_lower() not in ["tres", "txt"]:
+			continue
+		var file_rel: String = rel.path_join(name)
+		var known: Dictionary = trash_log.get(file_rel, {})
+		out.append({"trash_rel": file_rel, "original_rel": str(known.get("original", _rel_before_trash(file_rel))),
+			"title": str(known.get("title", _title_in_trash(file_rel))), "folder": false, "deleted": int(known.get("deleted", 0)), "notes": 1})
+
+
+## Where a file .trash doesn't have logged came from: its path without
+## .trash/ and without the " (deleted <stamp>[ n])" a clash gave it.
+static func _rel_before_trash(trash_rel: String) -> String:
+	var re := RegEx.create_from_string(" \\(deleted \\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}( \\d+)?\\)(\\.[^./]+)?$")
+	return re.sub(trash_rel.substr(TRASH_DIR.length() + 1), "$2")
+
+
+## The title in a trashed note's file, or its file name. Reads the text only:
+## nothing in the trash is loaded until it is restored.
+static func _title_in_trash(trash_rel: String) -> String:
+	if trash_rel.get_extension().to_lower() == "tres":
+		var re := RegEx.create_from_string("(?m)^title = \"((?:[^\"\\\\]|\\\\.)*)\"$")
+		var found: RegExMatch = re.search(FileAccess.get_file_as_string(vault_path + trash_rel))
+		if found != null and found.get_string(1) != "":
+			return found.get_string(1).c_unescape()
+	return trash_rel.get_file().get_basename()
+
+
+static func _read_trash_log() -> Dictionary:
+	if not FileAccess.file_exists(vault_path + TRASH_LOG):
+		return {}
+	var json := JSON.new()   # not JSON.parse_string: a damaged log is no error worth logging
+	if json.parse(FileAccess.get_file_as_string(vault_path + TRASH_LOG)) != OK or not json.data is Dictionary:
+		return {}
+	return json.data
+
+
+## Write the log, dropping what is no longer in the trash. A failure costs
+## only the date and the folder grouping: the files themselves are safe.
+static func _write_trash_log(trash_log: Dictionary) -> void:
+	for key in trash_log.keys():
+		if not _taken(key):
+			trash_log.erase(key)
+	var f := FileAccess.open(vault_path + TRASH_LOG, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(trash_log, "\t"))
+		f.close()
+
+
+static func _log_trashed(trash_rel: String, original_rel: String, title: String, folder: bool) -> void:
+	var trash_log: Dictionary = _read_trash_log()
+	trash_log[trash_rel] = {"original": original_rel, "title": title, "deleted": int(Time.get_unix_time_from_system()), "folder": folder}
+	_write_trash_log(trash_log)
+
+
+static func _log_restored(trash_rel: String) -> void:
+	var trash_log: Dictionary = _read_trash_log()
+	trash_log.erase(trash_rel)
+	_write_trash_log(trash_log)
+
+
+## Put a folder delete_folder trashed back at `original_rel`, or at
+## "<original_rel> (2)", "(3)"… when that path is taken now. A note in it whose
+## title another note took meanwhile gets a free one (free_title). Returns
+## the folder's path in the vault, or "" when it is no longer in the trash or
+## can't be moved; nothing changes then.
+static func restore_folder_from_trash(trash_rel: String, original_rel: String) -> String:
+	if not trash_rel.begins_with(TRASH_DIR + "/") or not DirAccess.dir_exists_absolute(vault_path + trash_rel) or not _note_rel_ok(original_rel):
+		return ""
+	var rel: String = original_rel
+	var i: int = 2
+	while _taken(rel):
+		rel = "%s (%d)" % [original_rel, i]
+		i += 1
+	DirAccess.make_dir_recursive_absolute((vault_path + rel).get_base_dir())
+	if DirAccess.rename_absolute(vault_path + trash_rel, vault_path + rel) != OK:
+		return ""
+	_log_restored(trash_rel)
+	refresh_note_list()
+	var prefix: String = vault_path + rel + "/"
+	for note in note_list.duplicate():
+		if note.resource_path.begins_with(prefix):
+			var title: String = free_title(note.title, note)
+			if title != note.title:
+				note.title = title
+				save_note(note, false)
+	return rel
 
 
 ## The note trash_note moved to `trash_rel`, whose file is no longer in the
@@ -2552,28 +2677,20 @@ static func rename_folder(rel: String, new_name: String) -> String:
 	return move_folder(rel, parent.path_join(n) if parent != "" else n)
 
 
-## Move a folder (and everything in it) to the system trash, or when the
-## system refuses (no trash there, another volume, a sandbox) to the vault's
-## own .trash/<rel>. Nothing is ever removed: a folder that can't be moved
-## either way stays, and false is returned.
+## Move a folder (and everything in it) to the vault's .trash/<rel>, where
+## the Trash can list and restore it. Nothing is ever removed: a folder that
+## can't be moved stays, and false is returned.
 static func delete_folder(rel: String) -> bool:
 	if rel == "" or not DirAccess.dir_exists_absolute(vault_path + rel):
 		return false
-	var ok: bool = _move_to_system_trash(vault_path + rel) == OK
-	if not ok:
-		var dest_rel: String = _trash_dest(rel, true)
-		DirAccess.make_dir_recursive_absolute((vault_path + dest_rel).get_base_dir())
-		ok = DirAccess.rename_absolute(vault_path + rel, vault_path + dest_rel) == OK
+	var dest_rel: String = _trash_dest(rel, true)
+	DirAccess.make_dir_recursive_absolute((vault_path + dest_rel).get_base_dir())
+	var ok: bool = DirAccess.rename_absolute(vault_path + rel, vault_path + dest_rel) == OK
 	if ok:
+		_log_trashed(dest_rel, rel, rel.get_file(), true)
 		_forget_under(vault_path + rel + "/")
 	refresh_note_list()
 	return ok
-
-
-static func _move_to_system_trash(path: String) -> Error:
-	if system_trash_hook.is_valid():
-		return system_trash_hook.call(path)
-	return OS.move_to_trash(path)
 
 
 ## Move a note's file into `folder` ("" = top level). Keeps the same object.

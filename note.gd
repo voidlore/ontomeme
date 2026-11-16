@@ -288,6 +288,9 @@ func _ready() -> void:
 	# Sidebar tag filter (part 2): the rows are built in _build_tag_sidebar,
 	# the × in the section header clears the filter, the header itself folds
 	# the section away, and a field narrows the rows when there are many
+	var trash_button: Button = %TrashButton
+	trash_button.icon = Icons.get_icon("trash", 14)
+	trash_button.pressed.connect(_show_trash_panel)
 	tag_sidebar_clear.icon = Icons.get_icon("close", 10)
 	tag_sidebar_clear.pressed.connect(_clear_tag_filter)
 	tag_sidebar_toggle.pressed.connect(_toggle_tags_collapsed)
@@ -2801,6 +2804,112 @@ func _restore_last_trashed() -> bool:
 	return true
 
 
+## The Trash: everything deleted from this vault, newest first, each with a
+## Restore button. It reads .trash each time, so it spans launches.
+func _show_trash_panel() -> void:
+	var dlg := AcceptDialog.new()
+	dlg.name = "TrashDialog"
+	dlg.title = "Trash"
+	dlg.ok_button_text = "Close"
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(540, 320)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var rows := VBoxContainer.new()
+	rows.name = "TrashRows"
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 8)
+	scroll.add_child(rows)
+	dlg.add_child(scroll)
+	var entries: Array[Dictionary] = VaultStore.trash_entries()
+	if entries.is_empty():
+		var empty := Label.new()
+		empty.name = "TrashEmpty"
+		empty.text = "Nothing here. Notes and folders you delete wait here until you restore them."
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rows.add_child(empty)
+	for entry in entries:
+		rows.add_child(_trash_row(dlg, entry))
+	dlg.add_button("Show in file manager", true, "show_folder")
+	dlg.custom_action.connect(func(action: StringName) -> void:
+		if action == &"show_folder":
+			_show_trash_folder())
+	dlg.visibility_changed.connect(func() -> void:
+		if not dlg.visible:
+			dlg.queue_free())
+	add_child(dlg)
+	dlg.popup_centered()
+
+
+## One line of the Trash: what it is, where it was, when it went, and Restore.
+func _trash_row(dlg: AcceptDialog, entry: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var icon := TextureRect.new()
+	icon.texture = Icons.get_icon("folder" if entry.folder else "file", 16)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	row.add_child(icon)
+	var text := VBoxContainer.new()
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.add_theme_constant_override("separation", 0)
+	var title := Label.new()
+	title.text = str(entry.title)
+	title.clip_text = true
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	text.add_child(title)
+	var detail := Label.new()
+	detail.text = _trash_row_detail(entry)
+	detail.modulate.a = 0.65
+	detail.clip_text = true
+	detail.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	text.add_child(detail)
+	row.add_child(text)
+	var restore := Button.new()
+	restore.text = "Restore"
+	restore.tooltip_text = "Put “%s” back" % entry.title
+	restore.pressed.connect(func() -> void:
+		dlg.hide()
+		_restore_trash_entry(entry))
+	row.add_child(restore)
+	return row
+
+
+func _trash_row_detail(entry: Dictionary) -> String:
+	var parent: String = str(entry.original_rel).get_base_dir()
+	var parts: PackedStringArray = ["From " + (parent if parent != "" else "the top level")]
+	if entry.folder:
+		parts.append("1 note" if entry.notes == 1 else "%d notes" % entry.notes)
+	if entry.deleted > 0:
+		var bias: int = int(Time.get_time_zone_from_system().get("bias", 0)) * 60
+		var at: Dictionary = Time.get_datetime_dict_from_unix_time(entry.deleted + bias)
+		var months: PackedStringArray = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+		parts.append("Deleted %s %d, %d:%02d" % [months[at.month - 1], at.day, at.hour, at.minute])
+	return "  ·  ".join(parts)
+
+
+## Restore one Trash line. A note goes through the same path as Ctrl+Z, so a
+## note deleted this session gets back any words its file couldn't hold.
+func _restore_trash_entry(entry: Dictionary) -> void:
+	if entry.folder:
+		var rel: String = VaultStore.restore_folder_from_trash(entry.trash_rel, entry.original_rel)
+		if rel == "":
+			_update_status(_with_unsaved("Couldn't restore the folder “%s”: it is no longer in the trash or can't be moved" % entry.title))
+			return
+		_collapsed.erase(rel)
+		_after_vault_op(_with_unsaved("Restored folder “%s”" % rel))
+		return
+	var kept: Dictionary = {}
+	for t in _trashed:
+		if t.trash_rel == entry.trash_rel and not t.has("folder"):
+			kept = t
+			break
+	if kept.is_empty():
+		kept = {"trash_rel": entry.trash_rel, "original_rel": entry.original_rel, "title": entry.title, "at": UndoRedoEngine.tick()}
+	else:
+		_trashed.erase(kept)
+	_trashed.append(kept)
+	_restore_last_trashed()
+
+
 ## Open <vault>/.trash in the file manager (made first, so an empty trash opens too).
 func _show_trash_folder() -> void:
 	var dir: String = VaultStore.vault_path.path_join(VaultStore.TRASH_DIR)
@@ -3497,6 +3606,7 @@ func _build_palette_items(filter_text: String = "") -> void:
 		{"label": "Redo", "hint": "Ctrl+Y", "action": "redo"},
 		{"label": "Delete current note", "hint": "", "action": "delete_note"},
 		{"label": "Restore last deleted note", "hint": "Ctrl+Z", "action": "restore_trash"},
+		{"label": "Open Trash", "hint": "", "action": "trash_panel"},
 		{"label": "Show trash folder", "hint": "", "action": "show_trash"},
 		{"label": "Import notes from a folder…", "hint": "", "action": "import"},
 		{"label": "Insert 3D scene: Galaxy", "hint": "3d", "action": "insert3d:galaxy"},
@@ -4274,6 +4384,7 @@ func _execute_command(action: String) -> void:
 			"delete_note": _on_delete_note_pressed()
 			"restore_trash": _restore_last_trashed()
 			"show_trash": _show_trash_folder()
+			"trash_panel": _show_trash_panel()
 			"import": _on_import_vault_pressed()
 			"export": _on_export_vault_pressed()
 			"export_md": _on_export_md_pressed()
@@ -5228,7 +5339,7 @@ func delete_folder(rel: String) -> void:
 			_open_note(VaultStore.note_list[0])
 		else:
 			_show_empty_state()
-	var status: String = "Moved folder “%s” to the trash" % rel
+	var status: String = "Moved folder “%s” to the trash  ·  Trash in the sidebar restores it" % rel
 	if kept.size() == 1:
 		status += " without the words %s couldn't save  ·  Ctrl+Z restores it with them" % kept[0]
 	elif kept.size() > 1:

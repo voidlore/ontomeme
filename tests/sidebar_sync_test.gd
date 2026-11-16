@@ -206,9 +206,7 @@ func folds_follow_folders() -> void:
 	app.create_folder("Inner", "Renamed")
 	app.create_folder("Inner", "Outer")
 	check(not app._collapsed.has("Renamed/Inner") and not app._collapsed.has("Outer/Inner"), "new folders at a folded folder's old paths start open (%s)" % [app._collapsed.keys()])
-	VaultStore.system_trash_hook = func(_p: String) -> Error: return FAILED
 	app.delete_folder("Dest")
-	VaultStore.system_trash_hook = Callable()
 	check(ui_folds().is_empty(), "a folder moved to the trash leaves no fold behind (%s)" % [ui_folds()])
 
 

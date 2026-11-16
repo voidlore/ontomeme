@@ -1,8 +1,8 @@
 extends SceneTree
 ## Deleting is undoable: a deleted note moves to <vault>/.trash (the layout
 ## the MCP server's delete_note uses) and comes back with Ctrl+Z or the
-## palette's "Restore last deleted note"; a folder the system trash refuses
-## goes to .trash too. No file is ever removed.
+## palette's "Restore last deleted note"; a deleted folder goes to .trash too,
+## and the Trash lists both and restores them. No file is ever removed.
 ##   headless:  godot --headless --path . -s res://tests/trash_test.gd
 
 const TestVault = preload("res://tests/test_vault.gd")
@@ -101,6 +101,7 @@ func _init() -> void:
 	store_outside_note_takes_trashed_title()
 	store_delete_folder()
 	await ui_delete_and_restore()
+	await trash_panel()
 
 	for f in [JourneyStore.file_override, ProgressStore.file_override]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
@@ -421,7 +422,7 @@ func store_outside_note_takes_trashed_title() -> void:
 	JourneyStore.reset()
 
 
-# ── VaultStore.delete_folder: the vault's .trash when the system trash fails ─
+# ── VaultStore.delete_folder: into the vault's .trash ─
 
 func store_delete_folder() -> void:
 	VaultStore.create_folder("Old")
@@ -434,12 +435,7 @@ func store_delete_folder() -> void:
 	var before: Dictionary = {}
 	for f in VaultStore._files_under(V + "Old/"):
 		before[f] = FileAccess.get_sha256(V + "Old/" + f)
-	var asked: Array = []
-	VaultStore.system_trash_hook = func(p: String) -> Error:
-		asked.append(p)
-		return FAILED
-	check(VaultStore.delete_folder("Old"), "delete_folder succeeds when the system trash fails")
-	check(asked == [V + "Old"], "…after trying the system trash first")
+	check(VaultStore.delete_folder("Old"), "delete_folder moves the folder")
 	check(not DirAccess.dir_exists_absolute(V + "Old") and DirAccess.dir_exists_absolute(V + ".trash/Old"), "…by moving the folder to .trash/Old")
 	var kept: bool = before.size() == 3
 	for f in before:
@@ -453,7 +449,7 @@ func store_delete_folder() -> void:
 	var gone: Array = Array(DirAccess.get_directories_at(V + ".trash")).filter(func(d): return str(d).begins_with("Old (deleted "))
 	check(gone.size() == 1 and FileAccess.file_exists(V + ".trash/" + gone[0] + "/note_old_three.tres") and DirAccess.dir_exists_absolute(V + ".trash/Old/Inner"), "a second folder of that name gets a \"(deleted …)\" suffix; the first stays")
 
-	# Neither trash takes it (the system trash fails, .trash is read-only):
+	# .trash can't take it (it is read-only):
 	# the folder stays, nothing is removed, and delete_folder says so.
 	VaultStore.create_folder("Stuck")
 	make_note("Stuck Note", "Stuck", "stuck words")
@@ -462,7 +458,77 @@ func store_delete_folder() -> void:
 		check(not VaultStore.delete_folder("Stuck"), "delete_folder returns false when no trash takes the folder")
 		check(FileAccess.get_file_as_string(V + "Stuck/note_stuck_note.tres").contains("stuck words") and VaultStore.get_note_index("Stuck Note") >= 0, "…and the folder and its note stay")
 		OS.execute("chmod", ["755", V + ".trash"])
-	VaultStore.system_trash_hook = Callable()
+
+
+# ── The Trash: lists notes and folders, restores them, spans launches ───────
+
+func trash_entry(title: String) -> Dictionary:
+	for e in VaultStore.trash_entries():
+		if e.title == title:
+			return e
+	return {}
+
+
+func trash_panel() -> void:
+	var note: ContentLayer = make_note("Panel Note", "Shelf", "panel note words")
+	var path: String = note.resource_path
+	check(VaultStore.trash_note(note) != "", "(Panel Note is in the trash)")
+	var e: Dictionary = trash_entry("Panel Note")
+	check(not e.is_empty() and not e.folder and e.original_rel == "Shelf/note_panel_note.tres" and e.deleted > 0, "the Trash lists a deleted note with its old path and date (%s)" % e)
+
+	VaultStore.create_folder("Box")
+	make_note("Box One", "Box", "box one words")
+	make_note("Box Two", "Box/Inner", "box two words")
+	VaultStore.delete_folder("Box")
+	var box: Dictionary = trash_entry("Box")
+	check(not box.is_empty() and box.folder and box.notes == 2 and box.original_rel == "Box", "the Trash lists a deleted folder as one line with its note count (%s)" % box)
+	check(trash_entry("Box One").is_empty(), "…not its notes one by one")
+	VaultStore.open_vault(V, false)
+	check(not trash_entry("Box").is_empty() and not trash_entry("Panel Note").is_empty(), "the Trash still lists them after the vault is opened again")
+
+	var plain := FileAccess.open(V + ".trash/note_unlogged (deleted 2026-01-02T03-04-05).tres", FileAccess.WRITE)
+	plain.store_string('[gd_resource type="Resource"]\n\n[resource]\ntitle = "Unlogged \\"Quoted\\""\n')
+	plain.close()
+	var u: Dictionary = trash_entry("Unlogged \"Quoted\"")
+	check(not u.is_empty() and u.original_rel == "note_unlogged.tres" and u.deleted == 0, "a file the app didn't log shows under its own title and original name (%s)" % u)
+	DirAccess.remove_absolute(V + u.trash_rel)
+
+	var app: Control = load("res://note.tscn").instantiate()
+	get_root().add_child(app)
+	await frames(4)
+	await click(app.get_node("%TrashButton"))
+	var dlg: AcceptDialog = app.get_node_or_null("TrashDialog")
+	check(dlg != null and dlg.visible, "the sidebar's Trash button opens the Trash")
+	var rows: Node = dlg.find_child("TrashRows", true, false) if dlg != null else null
+	var restores: Array = rows.find_children("*", "Button", true, false) if rows != null else []
+	check(restores.size() == VaultStore.trash_entries().size() and restores.size() >= 2, "…with a Restore button on every line (%d)" % restores.size())
+	for b in restores:   # by name: deletes in the same second tie, so the order isn't fixed
+		if b.tooltip_text.contains("“Box”"):
+			b.pressed.emit()
+	await frames(4)
+	check(trash_entry("Box").is_empty(), "Restore takes the line out of the Trash")
+	check(DirAccess.dir_exists_absolute(V + "Box") and FileAccess.file_exists(V + "Box/note_box_one.tres") and FileAccess.file_exists(V + "Box/Inner/note_box_two.tres"), "…and puts the whole folder back")
+	check(VaultStore.get_note_index("Box One") >= 0 and VaultStore.get_note_index("Box Two") >= 0, "…with its notes listed")
+	check(app.status_label.text.begins_with("Restored folder “Box”"), "…and says so (%s)" % app.status_label.text)
+	check(not FileAccess.get_file_as_string(V + VaultStore.TRASH_LOG).contains("\".trash/Box\""), "…and forgets the folder in the log")
+
+	app._restore_trash_entry(trash_entry("Panel Note"))
+	await frames(3)
+	check(FileAccess.file_exists(path) and app.current_note != null and app.current_note.title == "Panel Note" and app.raw_text_layer.text == "panel note words", "a note restored from an earlier launch opens with its words")
+
+	# A folder and a title taken since: both come back beside what took them
+	VaultStore.delete_folder("Box")
+	VaultStore.create_folder("Box")
+	make_note("Box One", "Box", "the new box one")
+	var rel: String = VaultStore.restore_folder_from_trash(trash_entry("Box").trash_rel, "Box")
+	check(rel == "Box (2)" and FileAccess.get_file_as_string(V + "Box/note_box_one.tres").contains("the new box one") and FileAccess.get_file_as_string(V + "Box (2)/note_box_one.tres").contains("box one words"), "a restore beside a folder that took the name keeps both (%s)" % rel)
+	check(VaultStore.get_note_index("Box One (2)") >= 0 and VaultStore.get_note_index("Box One") >= 0, "…and the restored note takes a free title")
+
+	check(VaultStore.restore_folder_from_trash(".trash/never", "Never") == "" and VaultStore.restore_folder_from_trash("../Box", "Stolen") == "", "a path that isn't a trashed folder is refused")
+	VaultStore.delete_folder("Box (2)")
+	check(VaultStore.restore_folder_from_trash(trash_entry("Box (2)").trash_rel, "../outside") == "", "a destination outside the vault is refused")
+	app.queue_free()
+	await frames(3)
 
 
 # ── UI: Delete button, restore from the palette and with Ctrl+Z ─────────────

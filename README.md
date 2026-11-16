@@ -278,9 +278,8 @@ opened, and Claude works there too. To use another vault, add
 for example `"--vault=C:\\Users\\YOU\\Documents\\Ontomeme"`).
 
 Claude asks you before it edits or deletes a note. Deleted notes go to the
-`.trash` folder inside your vault and are never erased: move a file back out
-of `.trash` to restore it. (Folders whose names start with a dot are hidden;
-on a Mac, press Cmd+Shift+. in Finder to show them.)
+`.trash` folder inside your vault and are never erased: click **Trash** at the
+bottom of the sidebar to restore one.
 
 If the tools don't appear, **Settings → Developer** shows whether the server
 started, and its log is `mcp-server-ontomeme.log` in `~/Library/Logs/Claude/`
@@ -296,7 +295,7 @@ details are in [mcp/README.md](mcp/README.md).
   a folder elsewhere doesn't let Claude reach it.
 - **Edits and deletes need your approval.** Ontomeme tells your MCP client
   that they change your notes, so the client asks you before it runs one.
-- **Deletes go to `.trash`.** Nothing is erased; you can move a note back.
+- **Deletes go to `.trash`.** Nothing is erased; **Trash** in the sidebar restores a note or folder.
 - **Notes can't bring code.** A note file with embedded code (a script
   inside it, or one it points to) is refused, never loaded, so nothing in
   a note runs. The server has no shell and no network access: it can't run

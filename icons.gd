@@ -23,6 +23,13 @@ static func get_icon(name: String, size: int = 16) -> Texture2D:
 			segs = [[Vector2(6, 4), Vector2(10, 8)], [Vector2(10, 8), Vector2(6, 12)]]
 		"chevron_down":
 			segs = [[Vector2(4, 6), Vector2(8, 10)], [Vector2(8, 10), Vector2(12, 6)]]
+		"file":
+			segs = [[Vector2(4, 2.5), Vector2(12, 2.5)], [Vector2(12, 2.5), Vector2(12, 13.5)], [Vector2(12, 13.5), Vector2(4, 13.5)],
+				[Vector2(4, 13.5), Vector2(4, 2.5)], [Vector2(6, 6), Vector2(10, 6)], [Vector2(6, 9), Vector2(10, 9)]]
+		"trash":
+			segs = [[Vector2(3, 4.5), Vector2(13, 4.5)], [Vector2(6.5, 4.5), Vector2(6.5, 2.5)], [Vector2(6.5, 2.5), Vector2(9.5, 2.5)],
+				[Vector2(9.5, 2.5), Vector2(9.5, 4.5)], [Vector2(4.5, 4.5), Vector2(5.2, 13.5)], [Vector2(5.2, 13.5), Vector2(10.8, 13.5)],
+				[Vector2(10.8, 13.5), Vector2(11.5, 4.5)], [Vector2(6.8, 7), Vector2(7, 11)], [Vector2(9.2, 7), Vector2(9, 11)]]
 		"folder":
 			segs = _folder()
 		"folder_plus":

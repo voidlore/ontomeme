@@ -278,7 +278,7 @@ func test_depth_cap() -> void:
 	remove_links_tree(L)
 
 
-## Deleting a folder without the system trash (delete_folder's fallback to
+## Deleting a folder (delete_folder's move to
 ## the vault's .trash) moves a link inside it as a link, never what the link
 ## leads to: a link out once emptied the folder it led to, and `up -> ..`
 ## walked the vault again.
@@ -289,13 +289,11 @@ func test_remove_folder_with_links(outside: String) -> void:
 	write_text(L + "doomed/note_doomed.tres", note_text("Doomed"))
 	check(link("..", L + "doomed/up") and link(outside.trim_suffix("/"), L + "doomed/ext") and link(outside.trim_suffix("/"), L + "ext_folder"), "(made doomed/up, doomed/ext and ext_folder)")
 	VaultStore.open_vault(L, false)
-	VaultStore.system_trash_hook = func(_p: String) -> Error: return FAILED
 	check(VaultStore.delete_folder("doomed") and not DirAccess.dir_exists_absolute(L + "doomed"), "a folder holding links is removed")
 	check(FileAccess.file_exists(L + ".trash/doomed/note_doomed.tres"), "…into the vault's .trash")
 	check(FileAccess.file_exists(L + "note_kept.tres"), "…and the rest of the vault stays")
 	check(FileAccess.file_exists(outside + "note_outside.tres"), "…and so does the outside folder a link inside it led to")
 	check(VaultStore.delete_folder("ext_folder") and FileAccess.file_exists(outside + "note_outside.tres"), "removing a linked folder removes the link, not the folder it leads to")
-	VaultStore.system_trash_hook = Callable()
 	remove_links_tree(L)
 
 

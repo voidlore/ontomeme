@@ -172,8 +172,7 @@ func folder_move_fails() -> void:
 	var open: ContentLayer = make_note("Stuck Open", "open saved", "Stuck")
 	var trash: String = V + VaultStore.TRASH_DIR
 	DirAccess.make_dir_recursive_absolute(trash)
-	VaultStore.system_trash_hook = func(_p: String) -> Error: return FAILED
-	chmod("555", trash)   # neither the system trash nor .trash takes the folder
+	chmod("555", trash)   # .trash can't take the folder
 	chmod("444", locked.resource_path)
 	type_into(locked, " + LOCKED WORDS")
 	app._flush_pending_save()
@@ -188,7 +187,6 @@ func folder_move_fails() -> void:
 	check(FileAccess.get_file_as_string(open.resource_path).contains("PENDING WORDS"), "the open note's pending edit still saves")
 	chmod("755", trash)
 	chmod("644", locked.resource_path)
-	VaultStore.system_trash_hook = Callable()
 	app._flush_pending_save()
 	check(FileAccess.get_file_as_string(locked.resource_path).contains("LOCKED WORDS") and app._unsaved.is_empty(), "the unsaved note's words reach the disk once it is writable")
 
@@ -202,7 +200,6 @@ func folder_delete_keeps_words() -> void:
 	var boxed: ContentLayer = make_note("Boxed", "boxed saved", "Box")
 	var open: ContentLayer = make_note("Boxed Open", "open saved", "Box")
 	var boxed_path: String = boxed.resource_path
-	VaultStore.system_trash_hook = func(_p: String) -> Error: return FAILED   # into .trash, where the test can look
 	chmod("444", boxed_path)
 	type_into(boxed, " + BOXED WORDS")
 	app._flush_pending_save()
@@ -210,7 +207,6 @@ func folder_delete_keeps_words() -> void:
 	type_into(open, " + OPEN PENDING")
 	app.raw_text_layer.grab_focus()   # typing there: the editor has the keyboard
 	app.delete_folder("Box")
-	VaultStore.system_trash_hook = Callable()
 	var trashed_open: String = V + VaultStore.TRASH_DIR.path_join("Box").path_join(open.resource_path.get_file())
 	check(not DirAccess.dir_exists_absolute(V + "Box"), "(the folder went to the trash)")
 	check(FileAccess.get_file_as_string(trashed_open).contains("OPEN PENDING"), "the open note's pending edit was saved before its folder went to the trash")
@@ -245,7 +241,6 @@ func folder_delete_ctrl_z_from_editor() -> void:
 	VaultStore.create_folder("Crate")
 	var crated: ContentLayer = make_note("Crated", "crated saved", "Crate")
 	var elsewhere: ContentLayer = make_note("Elsewhere", "elsewhere text")
-	VaultStore.system_trash_hook = func(_p: String) -> Error: return FAILED
 	chmod("444", crated.resource_path)
 	type_into(crated, " + CRATED WORDS")
 	app._flush_pending_save()
@@ -264,7 +259,6 @@ func folder_delete_ctrl_z_from_editor() -> void:
 	check(dlg != null, "(the folder menu asks before moving Crate to the trash)")
 	if dlg != null:
 		await click_in(dlg, dlg.get_ok_button())
-	VaultStore.system_trash_hook = Callable()
 	check(app.status_label.text.contains("without the words “Crated” couldn't save  ·  Ctrl+Z restores it with them"), "menu: the status offers Ctrl+Z for Crated's words (%s)" % app.status_label.text)
 	var focus: Control = get_root().gui_get_focus_owner()
 	check(not focus is TextEdit and not focus is LineEdit, "menu: …and the editor lets go of the keyboard (%s)" % focus)

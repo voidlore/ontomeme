@@ -248,9 +248,10 @@
   delete (`_let_go_of_keyboard`: a note's, and a folder's that kept unsaved
   words), or it would take that Ctrl+Z as its own undo: a right-click moves
   no focus, so the context menu's "Delete note" and its folder "Move to
-  trash…" (confirm dialog included) left it in the editor. `delete_folder` tries the system
-  trash, then `.trash/<rel>`; tests force that with
-  `VaultStore.system_trash_hook`. It saves a pending edit first, changes
+  trash…" (confirm dialog included) left it in the editor. `delete_folder` moves the
+  folder to `.trash/<rel>`. The sidebar's Trash (`_show_trash_panel`) lists
+  `VaultStore.trash_entries` and restores either kind; `.trash/.deleted.json`
+  records dates and which folders are one entry. It saves a pending edit first, changes
   nothing when the folder can't be moved, and gives each of its notes in
   `_unsaved` a `_trashed` entry (`folder`) at a free trash path
   (`VaultStore.trash_slot`), which a restore writes again from its words. Scans and `disk_signature` skip dot
